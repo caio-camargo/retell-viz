@@ -1,0 +1,473 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Journey Funnel — the same journeys as a Sankey</title>
+<!--
+  Sibling page of index.html (the gravity graph). Same anonymized aggregate,
+  step-indexed: column = position in the session, consecutive reloads collapsed.
+  Regenerate data with: python build_data.py
+-->
+<style>
+  :root {
+    --panel: rgba(18,20,27,.82);
+    --line: rgba(255,255,255,.11);
+    --text: #e6e8ef;
+    --dim: #8e93a6;
+    --accent: #86b6ef;
+    --www: #3987e5;
+    --dashboard: #d95926;
+    --docs: #199e70;
+    --booked: #0ca30c;
+    --exit: #6e7383;
+  }
+  * { box-sizing: border-box; }
+  html, body { min-height: 100%; margin: 0; background: #0b0d12; }
+  body {
+    font: 13px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: var(--text);
+  }
+  header {
+    display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
+    padding: 16px 22px 4px;
+  }
+  h1 { font-size: 13px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase;
+       margin: 0; color: var(--dim); }
+  header a { color: var(--accent); text-decoration: none; font-size: 12px;
+             border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; }
+  header a:hover { background: rgba(255,255,255,.08); }
+  #sub { font-size: 12px; color: var(--dim); max-width: 900px; padding: 0 22px 8px; }
+  #sub b { color: var(--text); font-weight: 600; }
+  #wrap { padding: 0 10px 20px; overflow-x: auto; }
+  svg { display: block; width: 100%; min-width: 900px; height: auto; }
+  text { font: 10.5px ui-sans-serif, system-ui, sans-serif; fill: rgba(230,232,239,.82);
+         paint-order: stroke; stroke: rgba(11,13,18,.85); stroke-width: 3px;
+         stroke-linejoin: round; }
+  text.head { font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
+              fill: #8e93a6; }
+  text.band { font-weight: 600; font-size: 11px; }
+  path.flow { fill: none; transition: opacity .12s; cursor: pointer; }
+  rect.node { cursor: pointer; }
+  #tip { position: fixed; display: none; pointer-events: none; z-index: 10;
+         background: rgba(10,12,17,.94); border: 1px solid var(--line); border-radius: 8px;
+         padding: 7px 10px; font-size: 11px; max-width: 320px; }
+  #tip .t { font-weight: 600; margin-bottom: 2px; word-break: break-all; }
+  #tip .d { color: var(--dim); font-variant-numeric: tabular-nums; }
+  #foot { padding: 0 22px 24px; font-size: 11px; color: var(--dim); max-width: 900px; }
+  #legend { display: flex; gap: 16px; flex-wrap: wrap; padding: 2px 22px 6px;
+            font-size: 11px; color: var(--dim); }
+  #legend .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block;
+                 margin-right: 5px; vertical-align: -1px; }
+  details { padding: 0 22px 14px; }
+  summary { cursor: pointer; font-size: 11px; letter-spacing: .06em; text-transform: uppercase;
+            color: var(--dim); }
+  summary:hover { color: var(--text); }
+  #tables { display: flex; gap: 40px; flex-wrap: wrap; margin-top: 10px; }
+  #tables table { border-collapse: collapse; font-size: 11.5px; }
+  #tables caption { text-align: left; font-size: 10px; letter-spacing: .08em;
+                    text-transform: uppercase; color: var(--dim); padding-bottom: 6px; }
+  #tables th { text-align: right; font-weight: 600; color: var(--dim); padding: 3px 10px;
+               border-bottom: 1px solid var(--line); }
+  #tables td { padding: 2.5px 10px; text-align: right; font-variant-numeric: tabular-nums;
+               border-bottom: 1px solid rgba(255,255,255,.05); }
+  #tables th:first-child, #tables td:first-child { text-align: left; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1 id="h1">Journey Funnel</h1>
+  <a href="index.html">← gravity graph</a>
+  <a href="sankey-all.html" id="siblink">all-traffic funnel →</a>
+  <a href="sankey-lakehouse.html" id="siblink2">warehouse funnel →</a>
+  <span style="font-size:11px;color:var(--dim)" id="meta"></span>
+</header>
+<div id="sub">
+  Sessions that touch the marketing site, one column per step. The <b>app dashboard</b> is
+  an origin and an outcome, not a step. <b style="color:var(--booked)">Green</b> = meeting
+  booked — mechanically possible only at the demo-request form (the gate&nbsp;⟡).
+  *Origins are self-reported.
+</div>
+<div id="legend"></div>
+<div id="wrap"></div>
+<div id="tip"></div>
+<details>
+  <summary>data table — the precise numbers a Sankey is bad at</summary>
+  <div id="tables"></div>
+</details>
+<div id="foot">
+  Anonymized aggregate — page paths and session counts only. Reloads collapsed; long-tail
+  pages fold into “(other …)”; a <b>dashed</b> ribbon is a journey that ran past the last
+  column — it ends at its real outcome, only its middle is undrawn;
+  <span id="elided"></span> interior marketing→app→marketing hops spliced out. BOOKED means
+  meeting scheduled (held-rate not measured). Same data and provenance as the
+  <a href="index.html" style="color:var(--accent)">gravity graph</a>; full caveats in
+  NOTES.md.
+</div>
+
+<script>
+"use strict";
+const DATA = /*DATA-START*/{"meta":{"source":"Identified-visitor sessions, retellai.com marketing site (anonymized aggregate)","date_range":["2026-06-30","2026-08-10 (two windows)"],"sessions":22804},"sankey":{"maxstep":6,"mode":"all","origins":["chatgpt","email","google ads","google organic","linkedin","other tagged","untagged / direct"],"included":22804,"excluded":{"empty or off-site":39,"duplicate export rows":10085},"confirmed":179,"appHopsElided":0,"flows":[{"c":0,"from":"chatgpt","to":"(blog & content)","n":18},{"c":0,"from":"chatgpt","to":"(landing pages)","n":17},{"c":0,"from":"chatgpt","to":"(other site pages)","n":17},{"c":0,"from":"chatgpt","to":"/careers","n":10},{"c":0,"from":"chatgpt","to":"/enterprise-plan","n":10},{"c":0,"from":"chatgpt","to":"/es","n":10},{"c":0,"from":"chatgpt","to":"/industry/healthcare-industry","n":1},{"c":0,"from":"chatgpt","to":"/partners","n":3},{"c":0,"from":"chatgpt","to":"/pricing","n":62},{"c":0,"from":"chatgpt","to":"/use-cases/receptionists","n":6},{"c":0,"from":"chatgpt","to":"homepage","n":272},{"c":0,"from":"email","to":"(blog & content)","n":6},{"c":0,"from":"email","to":"(other site pages)","n":40},{"c":0,"from":"email","to":"/careers","n":1},{"c":0,"from":"email","to":"/enterprise-plan","n":2},{"c":0,"from":"email","to":"/es","n":1},{"c":0,"from":"email","to":"/pricing","n":3},{"c":0,"from":"email","to":"homepage","n":59},{"c":0,"from":"google ads","to":"(blog & content)","n":117},{"c":0,"from":"google ads","to":"(landing pages)","n":377},{"c":0,"from":"google ads","to":"(other site pages)","n":24},{"c":0,"from":"google ads","to":"/about-us","n":14},{"c":0,"from":"google ads","to":"/careers","n":57},{"c":0,"from":"google ads","to":"/enterprise-plan","n":22},{"c":0,"from":"google ads","to":"/es","n":44},{"c":0,"from":"google ads","to":"/features/book-appointments","n":12},{"c":0,"from":"google ads","to":"/features/call-transfer","n":6},{"c":0,"from":"google ads","to":"/industry/healthcare-industry","n":9},{"c":0,"from":"google ads","to":"/pricing","n":121},{"c":0,"from":"google ads","to":"/use-cases/receptionists","n":17},{"c":0,"from":"google ads","to":"homepage","n":1624},{"c":0,"from":"google organic","to":"(blog & content)","n":9},{"c":0,"from":"google organic","to":"(landing pages)","n":13},{"c":0,"from":"google organic","to":"(other site pages)","n":15},{"c":0,"from":"google organic","to":"/careers","n":6},{"c":0,"from":"google organic","to":"/enterprise-plan","n":52},{"c":0,"from":"google organic","to":"/es","n":4},{"c":0,"from":"google organic","to":"/features/book-appointments","n":1},{"c":0,"from":"google organic","to":"/pricing","n":29},{"c":0,"from":"google organic","to":"homepage","n":109},{"c":0,"from":"linkedin","to":"(blog & content)","n":8},{"c":0,"from":"linkedin","to":"(landing pages)","n":3},{"c":0,"from":"linkedin","to":"(other site pages)","n":3},{"c":0,"from":"linkedin","to":"/about-us","n":4},{"c":0,"from":"linkedin","to":"/careers","n":26},{"c":0,"from":"linkedin","to":"/enterprise-plan","n":1},{"c":0,"from":"linkedin","to":"/features/book-appointments","n":1},{"c":0,"from":"linkedin","to":"/pricing","n":5},{"c":0,"from":"linkedin","to":"homepage","n":80},{"c":0,"from":"other tagged","to":"(blog & content)","n":6},{"c":0,"from":"other tagged","to":"(other site pages)","n":3},{"c":0,"from":"other tagged","to":"/careers","n":13},{"c":0,"from":"other tagged","to":"/es","n":1},{"c":0,"from":"other tagged","to":"/pricing","n":3},{"c":0,"from":"other tagged","to":"homepage","n":21},{"c":0,"from":"untagged / direct","to":"(blog & content)","n":1774},{"c":0,"from":"untagged / direct","to":"(landing pages)","n":505},{"c":0,"from":"untagged / direct","to":"(other site pages)","n":470},{"c":0,"from":"untagged / direct","to":"/about-us","n":84},{"c":0,"from":"untagged / direct","to":"/blog/how-to-call-back-no-caller-id","n":513},{"c":0,"from":"untagged / direct","to":"/careers","n":1013},{"c":0,"from":"untagged / direct","to":"/enterprise-plan","n":137},{"c":0,"from":"untagged / direct","to":"/es","n":400},{"c":0,"from":"untagged / direct","to":"/features/book-appointments","n":57},{"c":0,"from":"untagged / direct","to":"/features/call-transfer","n":33},{"c":0,"from":"untagged / direct","to":"/industry/healthcare-industry","n":54},{"c":0,"from":"untagged / direct","to":"/partners","n":46},{"c":0,"from":"untagged / direct","to":"/pricing","n":1509},{"c":0,"from":"untagged / direct","to":"/use-cases/receptionists","n":81},{"c":0,"from":"untagged / direct","to":"homepage","n":12697},{"c":1,"from":"(blog & content)","to":"(blog & content)","n":200},{"c":1,"from":"(blog & content)","to":"(landing pages)","n":25},{"c":1,"from":"(blog & content)","to":"(other site pages)","n":41},{"c":1,"from":"(blog & content)","to":"/about-us","n":1},{"c":1,"from":"(blog & content)","to":"/blog/how-to-call-back-no-caller-id","n":2},{"c":1,"from":"(blog & content)","to":"/careers","n":6},{"c":1,"from":"(blog & content)","to":"/enterprise-plan","n":8},{"c":1,"from":"(blog & content)","to":"/features/book-appointments","n":3},{"c":1,"from":"(blog & content)","to":"/features/call-transfer","n":3},{"c":1,"from":"(blog & content)","to":"/industry/healthcare-industry","n":1},{"c":1,"from":"(blog & content)","to":"/partners","n":6},{"c":1,"from":"(blog & content)","to":"/pricing","n":78},{"c":1,"from":"(blog & content)","to":"/use-cases/receptionists","n":7},{"c":1,"from":"(blog & content)","to":"homepage","n":207},{"c":1,"from":"(landing pages)","to":"(blog & content)","n":24},{"c":1,"from":"(landing pages)","to":"(landing pages)","n":74},{"c":1,"from":"(landing pages)","to":"(other site pages)","n":11},{"c":1,"from":"(landing pages)","to":"/about-us","n":2},{"c":1,"from":"(landing pages)","to":"/blog/how-to-call-back-no-caller-id","n":2},{"c":1,"from":"(landing pages)","to":"/careers","n":5},{"c":1,"from":"(landing pages)","to":"/enterprise-plan","n":11},{"c":1,"from":"(landing pages)","to":"/es","n":2},{"c":1,"from":"(landing pages)","to":"/features/book-appointments","n":11},{"c":1,"from":"(landing pages)","to":"/features/call-transfer","n":7},{"c":1,"from":"(landing pages)","to":"/industry/healthcare-industry","n":2},{"c":1,"from":"(landing pages)","to":"/partners","n":9},{"c":1,"from":"(landing pages)","to":"/pricing","n":54},{"c":1,"from":"(landing pages)","to":"/use-cases/receptionists","n":9},{"c":1,"from":"(landing pages)","to":"homepage","n":130},{"c":1,"from":"(other site pages)","to":"(blog & content)","n":20},{"c":1,"from":"(other site pages)","to":"(landing pages)","n":15},{"c":1,"from":"(other site pages)","to":"(other site pages)","n":76},{"c":1,"from":"(other site pages)","to":"/about-us","n":3},{"c":1,"from":"(other site pages)","to":"/enterprise-plan","n":12},{"c":1,"from":"(other site pages)","to":"/es","n":25},{"c":1,"from":"(other site pages)","to":"/pricing","n":16},{"c":1,"from":"(other site pages)","to":"/use-cases/receptionists","n":1},{"c":1,"from":"(other site pages)","to":"homepage","n":87},{"c":1,"from":"/about-us","to":"(blog & content)","n":3},{"c":1,"from":"/about-us","to":"(landing pages)","n":1},{"c":1,"from":"/about-us","to":"(other site pages)","n":2},{"c":1,"from":"/about-us","to":"/careers","n":8},{"c":1,"from":"/about-us","to":"/enterprise-plan","n":2},{"c":1,"from":"/about-us","to":"/features/book-appointments","n":1},{"c":1,"from":"/about-us","to":"/features/call-transfer","n":1},{"c":1,"from":"/about-us","to":"/pricing","n":3},{"c":1,"from":"/about-us","to":"homepage","n":49},{"c":1,"from":"/blog/how-to-call-back-no-caller-id","to":"(blog & content)","n":2},{"c":1,"from":"/blog/how-to-call-back-no-caller-id","to":"(landing pages)","n":1},{"c":1,"from":"/blog/how-to-call-back-no-caller-id","to":"(other site pages)","n":1},{"c":1,"from":"/careers","to":"(blog & content)","n":16},{"c":1,"from":"/careers","to":"(landing pages)","n":11},{"c":1,"from":"/careers","to":"(other site pages)","n":12},{"c":1,"from":"/careers","to":"/about-us","n":23},{"c":1,"from":"/careers","to":"/enterprise-plan","n":1},{"c":1,"from":"/careers","to":"/es","n":1},{"c":1,"from":"/careers","to":"/features/call-transfer","n":4},{"c":1,"from":"/careers","to":"/industry/healthcare-industry","n":2},{"c":1,"from":"/careers","to":"/partners","n":1},{"c":1,"from":"/careers","to":"/pricing","n":20},{"c":1,"from":"/careers","to":"/use-cases/receptionists","n":1},{"c":1,"from":"/careers","to":"homepage","n":347},{"c":1,"from":"/enterprise-plan","to":"(blog & content)","n":6},{"c":1,"from":"/enterprise-plan","to":"(landing pages)","n":6},{"c":1,"from":"/enterprise-plan","to":"(other site pages)","n":6},{"c":1,"from":"/enterprise-plan","to":"/about-us","n":1},{"c":1,"from":"/enterprise-plan","to":"/es","n":1},{"c":1,"from":"/enterprise-plan","to":"/features/book-appointments","n":1},{"c":1,"from":"/enterprise-plan","to":"/features/call-transfer","n":2},{"c":1,"from":"/enterprise-plan","to":"/industry/healthcare-industry","n":2},{"c":1,"from":"/enterprise-plan","to":"/partners","n":1},{"c":1,"from":"/enterprise-plan","to":"/pricing","n":24},{"c":1,"from":"/enterprise-plan","to":"/use-cases/receptionists","n":3},{"c":1,"from":"/enterprise-plan","to":"homepage","n":89},{"c":1,"from":"/es","to":"(blog & content)","n":7},{"c":1,"from":"/es","to":"(landing pages)","n":3},{"c":1,"from":"/es","to":"(other site pages)","n":39},{"c":1,"from":"/es","to":"/enterprise-plan","n":1},{"c":1,"from":"/es","to":"/partners","n":2},{"c":1,"from":"/es","to":"/pricing","n":8},{"c":1,"from":"/es","to":"homepage","n":11},{"c":1,"from":"/features/book-appointments","to":"(blog & content)","n":1},{"c":1,"from":"/features/book-appointments","to":"(landing pages)","n":7},{"c":1,"from":"/features/book-appointments","to":"(other site pages)","n":1},{"c":1,"from":"/features/book-appointments","to":"/about-us","n":1},{"c":1,"from":"/features/book-appointments","to":"/enterprise-plan","n":2},{"c":1,"from":"/features/book-appointments","to":"/features/call-transfer","n":1},{"c":1,"from":"/features/book-appointments","to":"/pricing","n":10},{"c":1,"from":"/features/book-appointments","to":"/use-cases/receptionists","n":2},{"c":1,"from":"/features/book-appointments","to":"homepage","n":28},{"c":1,"from":"/features/call-transfer","to":"(blog & content)","n":3},{"c":1,"from":"/features/call-transfer","to":"(landing pages)","n":4},{"c":1,"from":"/features/call-transfer","to":"/careers","n":1},{"c":1,"from":"/features/call-transfer","to":"/enterprise-plan","n":1},{"c":1,"from":"/features/call-transfer","to":"/features/book-appointments","n":2},{"c":1,"from":"/features/call-transfer","to":"/industry/healthcare-industry","n":1},{"c":1,"from":"/features/call-transfer","to":"/pricing","n":6},{"c":1,"from":"/features/call-transfer","to":"/use-cases/receptionists","n":1},{"c":1,"from":"/features/call-transfer","to":"homepage","n":13},{"c":1,"from":"/industry/healthcare-industry","to":"(blog & content)","n":2},{"c":1,"from":"/industry/healthcare-industry","to":"(landing pages)","n":4},{"c":1,"from":"/industry/healthcare-industry","to":"/partners","n":1},{"c":1,"from":"/industry/healthcare-industry","to":"/pricing","n":7},{"c":1,"from":"/industry/healthcare-industry","to":"/use-cases/receptionists","n":2},{"c":1,"from":"/industry/healthcare-industry","to":"homepage","n":25},{"c":1,"from":"/partners","to":"(blog & content)","n":2},{"c":1,"from":"/partners","to":"(landing pages)","n":11},{"c":1,"from":"/partners","to":"(other site pages)","n":1},{"c":1,"from":"/partners","to":"/enterprise-plan","n":1},{"c":1,"from":"/partners","to":"/features/call-transfer","n":1},{"c":1,"from":"/partners","to":"/pricing","n":2},{"c":1,"from":"/partners","to":"homepage","n":11},{"c":1,"from":"/pricing","to":"(blog & content)","n":78},{"c":1,"from":"/pricing","to":"(landing pages)","n":72},{"c":1,"from":"/pricing","to":"(other site pages)","n":18},{"c":1,"from":"/pricing","to":"/about-us","n":6},{"c":1,"from":"/pricing","to":"/careers","n":10},{"c":1,"from":"/pricing","to":"/enterprise-plan","n":41},{"c":1,"from":"/pricing","to":"/es","n":6},{"c":1,"from":"/pricing","to":"/features/book-appointments","n":10},{"c":1,"from":"/pricing","to":"/features/call-transfer","n":6},{"c":1,"from":"/pricing","to":"/industry/healthcare-industry","n":8},{"c":1,"from":"/pricing","to":"/partners","n":4},{"c":1,"from":"/pricing","to":"/use-cases/receptionists","n":15},{"c":1,"from":"/pricing","to":"homepage","n":740},{"c":1,"from":"/use-cases/receptionists","to":"(blog & content)","n":3},{"c":1,"from":"/use-cases/receptionists","to":"(landing pages)","n":6},{"c":1,"from":"/use-cases/receptionists","to":"(other site pages)","n":1},{"c":1,"from":"/use-cases/receptionists","to":"/careers","n":1},{"c":1,"from":"/use-cases/receptionists","to":"/enterprise-plan","n":2},{"c":1,"from":"/use-cases/receptionists","to":"/features/book-appointments","n":1},{"c":1,"from":"/use-cases/receptionists","to":"/features/call-transfer","n":1},{"c":1,"from":"/use-cases/receptionists","to":"/industry/healthcare-industry","n":2},{"c":1,"from":"/use-cases/receptionists","to":"/partners","n":1},{"c":1,"from":"/use-cases/receptionists","to":"/pricing","n":16},{"c":1,"from":"/use-cases/receptionists","to":"homepage","n":13},{"c":1,"from":"homepage","to":"(blog & content)","n":445},{"c":1,"from":"homepage","to":"(landing pages)","n":383},{"c":1,"from":"homepage","to":"(other site pages)","n":266},{"c":1,"from":"homepage","to":"/about-us","n":81},{"c":1,"from":"homepage","to":"/blog/how-to-call-back-no-caller-id","n":1},{"c":1,"from":"homepage","to":"/careers","n":214},{"c":1,"from":"homepage","to":"/enterprise-plan","n":218},{"c":1,"from":"homepage","to":"/es","n":54},{"c":1,"from":"homepage","to":"/features/book-appointments","n":36},{"c":1,"from":"homepage","to":"/features/call-transfer","n":32},{"c":1,"from":"homepage","to":"/industry/healthcare-industry","n":41},{"c":1,"from":"homepage","to":"/partners","n":25},{"c":1,"from":"homepage","to":"/pricing","n":1114},{"c":1,"from":"homepage","to":"/use-cases/receptionists","n":31},{"c":2,"from":"(blog & content)","to":"(blog & content)","n":172},{"c":2,"from":"(blog & content)","to":"(landing pages)","n":44},{"c":2,"from":"(blog & content)","to":"(other site pages)","n":27},{"c":2,"from":"(blog & content)","to":"/about-us","n":1},{"c":2,"from":"(blog & content)","to":"/blog/how-to-call-back-no-caller-id","n":2},{"c":2,"from":"(blog & content)","to":"/careers","n":5},{"c":2,"from":"(blog & content)","to":"/enterprise-plan","n":11},{"c":2,"from":"(blog & content)","to":"/es","n":3},{"c":2,"from":"(blog & content)","to":"/features/call-transfer","n":3},{"c":2,"from":"(blog & content)","to":"/industry/healthcare-industry","n":6},{"c":2,"from":"(blog & content)","to":"/partners","n":1},{"c":2,"from":"(blog & content)","to":"/pricing","n":39},{"c":2,"from":"(blog & content)","to":"/use-cases/receptionists","n":1},{"c":2,"from":"(blog & content)","to":"homepage","n":57},{"c":2,"from":"(landing pages)","to":"(blog & content)","n":41},{"c":2,"from":"(landing pages)","to":"(landing pages)","n":133},{"c":2,"from":"(landing pages)","to":"(other site pages)","n":13},{"c":2,"from":"(landing pages)","to":"/about-us","n":2},{"c":2,"from":"(landing pages)","to":"/careers","n":8},{"c":2,"from":"(landing pages)","to":"/enterprise-plan","n":18},{"c":2,"from":"(landing pages)","to":"/es","n":1},{"c":2,"from":"(landing pages)","to":"/features/book-appointments","n":4},{"c":2,"from":"(landing pages)","to":"/features/call-transfer","n":7},{"c":2,"from":"(landing pages)","to":"/industry/healthcare-industry","n":4},{"c":2,"from":"(landing pages)","to":"/partners","n":9},{"c":2,"from":"(landing pages)","to":"/pricing","n":69},{"c":2,"from":"(landing pages)","to":"/use-cases/receptionists","n":8},{"c":2,"from":"(landing pages)","to":"homepage","n":67},{"c":2,"from":"(other site pages)","to":"(blog & content)","n":37},{"c":2,"from":"(other site pages)","to":"(landing pages)","n":37},{"c":2,"from":"(other site pages)","to":"(other site pages)","n":100},{"c":2,"from":"(other site pages)","to":"/about-us","n":5},{"c":2,"from":"(other site pages)","to":"/careers","n":2},{"c":2,"from":"(other site pages)","to":"/enterprise-plan","n":16},{"c":2,"from":"(other site pages)","to":"/es","n":8},{"c":2,"from":"(other site pages)","to":"/industry/healthcare-industry","n":2},{"c":2,"from":"(other site pages)","to":"/partners","n":1},{"c":2,"from":"(other site pages)","to":"/pricing","n":22},{"c":2,"from":"(other site pages)","to":"homepage","n":21},{"c":2,"from":"/about-us","to":"(blog & content)","n":4},{"c":2,"from":"/about-us","to":"(landing pages)","n":6},{"c":2,"from":"/about-us","to":"(other site pages)","n":3},{"c":2,"from":"/about-us","to":"/careers","n":9},{"c":2,"from":"/about-us","to":"/enterprise-plan","n":7},{"c":2,"from":"/about-us","to":"/pricing","n":8},{"c":2,"from":"/about-us","to":"homepage","n":21},{"c":2,"from":"/careers","to":"(blog & content)","n":18},{"c":2,"from":"/careers","to":"(landing pages)","n":13},{"c":2,"from":"/careers","to":"(other site pages)","n":3},{"c":2,"from":"/careers","to":"/about-us","n":12},{"c":2,"from":"/careers","to":"/enterprise-plan","n":4},{"c":2,"from":"/careers","to":"/partners","n":1},{"c":2,"from":"/careers","to":"/pricing","n":10},{"c":2,"from":"/careers","to":"homepage","n":12},{"c":2,"from":"/enterprise-plan","to":"(blog & content)","n":11},{"c":2,"from":"/enterprise-plan","to":"(landing pages)","n":18},{"c":2,"from":"/enterprise-plan","to":"(other site pages)","n":7},{"c":2,"from":"/enterprise-plan","to":"/about-us","n":2},{"c":2,"from":"/enterprise-plan","to":"/careers","n":1},{"c":2,"from":"/enterprise-plan","to":"/es","n":3},{"c":2,"from":"/enterprise-plan","to":"/features/book-appointments","n":1},{"c":2,"from":"/enterprise-plan","to":"/features/call-transfer","n":3},{"c":2,"from":"/enterprise-plan","to":"/industry/healthcare-industry","n":1},{"c":2,"from":"/enterprise-plan","to":"/pricing","n":42},{"c":2,"from":"/enterprise-plan","to":"/use-cases/receptionists","n":1},{"c":2,"from":"/enterprise-plan","to":"homepage","n":36},{"c":2,"from":"/es","to":"(blog & content)","n":2},{"c":2,"from":"/es","to":"(landing pages)","n":2},{"c":2,"from":"/es","to":"(other site pages)","n":13},{"c":2,"from":"/es","to":"/enterprise-plan","n":3},{"c":2,"from":"/es","to":"/partners","n":1},{"c":2,"from":"/es","to":"/pricing","n":2},{"c":2,"from":"/es","to":"homepage","n":1},{"c":2,"from":"/features/book-appointments","to":"(blog & content)","n":3},{"c":2,"from":"/features/book-appointments","to":"(landing pages)","n":17},{"c":2,"from":"/features/book-appointments","to":"/enterprise-plan","n":1},{"c":2,"from":"/features/book-appointments","to":"/features/call-transfer","n":3},{"c":2,"from":"/features/book-appointments","to":"/industry/healthcare-industry","n":4},{"c":2,"from":"/features/book-appointments","to":"/pricing","n":15},{"c":2,"from":"/features/book-appointments","to":"homepage","n":2},{"c":2,"from":"/features/call-transfer","to":"(blog & content)","n":1},{"c":2,"from":"/features/call-transfer","to":"(landing pages)","n":12},{"c":2,"from":"/features/call-transfer","to":"(other site pages)","n":1},{"c":2,"from":"/features/call-transfer","to":"/about-us","n":2},{"c":2,"from":"/features/call-transfer","to":"/careers","n":1},{"c":2,"from":"/features/call-transfer","to":"/enterprise-plan","n":2},{"c":2,"from":"/features/call-transfer","to":"/features/book-appointments","n":1},{"c":2,"from":"/features/call-transfer","to":"/industry/healthcare-industry","n":3},{"c":2,"from":"/features/call-transfer","to":"/pricing","n":4},{"c":2,"from":"/features/call-transfer","to":"homepage","n":12},{"c":2,"from":"/industry/healthcare-industry","to":"(blog & content)","n":4},{"c":2,"from":"/industry/healthcare-industry","to":"(landing pages)","n":12},{"c":2,"from":"/industry/healthcare-industry","to":"(other site pages)","n":2},{"c":2,"from":"/industry/healthcare-industry","to":"/enterprise-plan","n":2},{"c":2,"from":"/industry/healthcare-industry","to":"/features/call-transfer","n":3},{"c":2,"from":"/industry/healthcare-industry","to":"/pricing","n":10},{"c":2,"from":"/industry/healthcare-industry","to":"/use-cases/receptionists","n":1},{"c":2,"from":"/industry/healthcare-industry","to":"homepage","n":3},{"c":2,"from":"/partners","to":"(blog & content)","n":5},{"c":2,"from":"/partners","to":"(landing pages)","n":18},{"c":2,"from":"/partners","to":"(other site pages)","n":1},{"c":2,"from":"/partners","to":"/enterprise-plan","n":1},{"c":2,"from":"/partners","to":"/industry/healthcare-industry","n":1},{"c":2,"from":"/partners","to":"/pricing","n":3},{"c":2,"from":"/partners","to":"homepage","n":10},{"c":2,"from":"/pricing","to":"(blog & content)","n":56},{"c":2,"from":"/pricing","to":"(landing pages)","n":104},{"c":2,"from":"/pricing","to":"(other site pages)","n":25},{"c":2,"from":"/pricing","to":"/about-us","n":7},{"c":2,"from":"/pricing","to":"/careers","n":12},{"c":2,"from":"/pricing","to":"/enterprise-plan","n":59},{"c":2,"from":"/pricing","to":"/es","n":1},{"c":2,"from":"/pricing","to":"/features/book-appointments","n":16},{"c":2,"from":"/pricing","to":"/features/call-transfer","n":15},{"c":2,"from":"/pricing","to":"/industry/healthcare-industry","n":10},{"c":2,"from":"/pricing","to":"/partners","n":9},{"c":2,"from":"/pricing","to":"/use-cases/receptionists","n":9},{"c":2,"from":"/pricing","to":"homepage","n":74},{"c":2,"from":"/use-cases/receptionists","to":"(blog & content)","n":5},{"c":2,"from":"/use-cases/receptionists","to":"(landing pages)","n":7},{"c":2,"from":"/use-cases/receptionists","to":"/enterprise-plan","n":3},{"c":2,"from":"/use-cases/receptionists","to":"/features/book-appointments","n":2},{"c":2,"from":"/use-cases/receptionists","to":"/features/call-transfer","n":1},{"c":2,"from":"/use-cases/receptionists","to":"/industry/healthcare-industry","n":1},{"c":2,"from":"/use-cases/receptionists","to":"/pricing","n":13},{"c":2,"from":"/use-cases/receptionists","to":"homepage","n":9},{"c":2,"from":"homepage","to":"(blog & content)","n":77},{"c":2,"from":"homepage","to":"(landing pages)","n":126},{"c":2,"from":"homepage","to":"(other site pages)","n":37},{"c":2,"from":"homepage","to":"/about-us","n":27},{"c":2,"from":"homepage","to":"/careers","n":33},{"c":2,"from":"homepage","to":"/enterprise-plan","n":49},{"c":2,"from":"homepage","to":"/es","n":4},{"c":2,"from":"homepage","to":"/features/book-appointments","n":20},{"c":2,"from":"homepage","to":"/features/call-transfer","n":22},{"c":2,"from":"homepage","to":"/industry/healthcare-industry","n":14},{"c":2,"from":"homepage","to":"/partners","n":6},{"c":2,"from":"homepage","to":"/pricing","n":93},{"c":2,"from":"homepage","to":"/use-cases/receptionists","n":12},{"c":3,"from":"(blog & content)","to":"(blog & content)","n":126},{"c":3,"from":"(blog & content)","to":"(landing pages)","n":28},{"c":3,"from":"(blog & content)","to":"(other site pages)","n":16},{"c":3,"from":"(blog & content)","to":"/about-us","n":5},{"c":3,"from":"(blog & content)","to":"/careers","n":4},{"c":3,"from":"(blog & content)","to":"/enterprise-plan","n":10},{"c":3,"from":"(blog & content)","to":"/features/book-appointments","n":2},{"c":3,"from":"(blog & content)","to":"/features/call-transfer","n":3},{"c":3,"from":"(blog & content)","to":"/industry/healthcare-industry","n":4},{"c":3,"from":"(blog & content)","to":"/partners","n":1},{"c":3,"from":"(blog & content)","to":"/pricing","n":22},{"c":3,"from":"(blog & content)","to":"/use-cases/receptionists","n":1},{"c":3,"from":"(blog & content)","to":"homepage","n":23},{"c":3,"from":"(landing pages)","to":"(blog & content)","n":36},{"c":3,"from":"(landing pages)","to":"(landing pages)","n":144},{"c":3,"from":"(landing pages)","to":"(other site pages)","n":23},{"c":3,"from":"(landing pages)","to":"/about-us","n":9},{"c":3,"from":"(landing pages)","to":"/careers","n":11},{"c":3,"from":"(landing pages)","to":"/enterprise-plan","n":14},{"c":3,"from":"(landing pages)","to":"/es","n":2},{"c":3,"from":"(landing pages)","to":"/features/book-appointments","n":7},{"c":3,"from":"(landing pages)","to":"/features/call-transfer","n":13},{"c":3,"from":"(landing pages)","to":"/industry/healthcare-industry","n":10},{"c":3,"from":"(landing pages)","to":"/partners","n":19},{"c":3,"from":"(landing pages)","to":"/pricing","n":31},{"c":3,"from":"(landing pages)","to":"/use-cases/receptionists","n":4},{"c":3,"from":"(landing pages)","to":"homepage","n":38},{"c":3,"from":"(other site pages)","to":"(blog & content)","n":21},{"c":3,"from":"(other site pages)","to":"(landing pages)","n":20},{"c":3,"from":"(other site pages)","to":"(other site pages)","n":51},{"c":3,"from":"(other site pages)","to":"/about-us","n":1},{"c":3,"from":"(other site pages)","to":"/careers","n":1},{"c":3,"from":"(other site pages)","to":"/enterprise-plan","n":8},{"c":3,"from":"(other site pages)","to":"/es","n":1},{"c":3,"from":"(other site pages)","to":"/features/book-appointments","n":1},{"c":3,"from":"(other site pages)","to":"/features/call-transfer","n":2},{"c":3,"from":"(other site pages)","to":"/industry/healthcare-industry","n":1},{"c":3,"from":"(other site pages)","to":"/partners","n":1},{"c":3,"from":"(other site pages)","to":"/pricing","n":8},{"c":3,"from":"(other site pages)","to":"homepage","n":10},{"c":3,"from":"/about-us","to":"(blog & content)","n":3},{"c":3,"from":"/about-us","to":"(landing pages)","n":3},{"c":3,"from":"/about-us","to":"(other site pages)","n":1},{"c":3,"from":"/about-us","to":"/enterprise-plan","n":1},{"c":3,"from":"/about-us","to":"/features/book-appointments","n":1},{"c":3,"from":"/about-us","to":"/industry/healthcare-industry","n":1},{"c":3,"from":"/about-us","to":"/use-cases/receptionists","n":1},{"c":3,"from":"/about-us","to":"homepage","n":3},{"c":3,"from":"/blog/how-to-call-back-no-caller-id","to":"(other site pages)","n":2},{"c":3,"from":"/careers","to":"(blog & content)","n":4},{"c":3,"from":"/careers","to":"(landing pages)","n":8},{"c":3,"from":"/careers","to":"(other site pages)","n":3},{"c":3,"from":"/careers","to":"/about-us","n":3},{"c":3,"from":"/careers","to":"/enterprise-plan","n":1},{"c":3,"from":"/careers","to":"/features/call-transfer","n":4},{"c":3,"from":"/careers","to":"/partners","n":3},{"c":3,"from":"/careers","to":"/pricing","n":1},{"c":3,"from":"/careers","to":"homepage","n":1},{"c":3,"from":"/enterprise-plan","to":"(blog & content)","n":4},{"c":3,"from":"/enterprise-plan","to":"(landing pages)","n":10},{"c":3,"from":"/enterprise-plan","to":"(other site pages)","n":12},{"c":3,"from":"/enterprise-plan","to":"/about-us","n":2},{"c":3,"from":"/enterprise-plan","to":"/careers","n":2},{"c":3,"from":"/enterprise-plan","to":"/features/call-transfer","n":1},{"c":3,"from":"/enterprise-plan","to":"/pricing","n":18},{"c":3,"from":"/enterprise-plan","to":"/use-cases/receptionists","n":2},{"c":3,"from":"/enterprise-plan","to":"homepage","n":7},{"c":3,"from":"/es","to":"(blog & content)","n":1},{"c":3,"from":"/es","to":"(other site pages)","n":7},{"c":3,"from":"/es","to":"/pricing","n":3},{"c":3,"from":"/es","to":"/use-cases/receptionists","n":1},{"c":3,"from":"/features/book-appointments","to":"(blog & content)","n":2},{"c":3,"from":"/features/book-appointments","to":"(landing pages)","n":7},{"c":3,"from":"/features/book-appointments","to":"(other site pages)","n":1},{"c":3,"from":"/features/book-appointments","to":"/enterprise-plan","n":6},{"c":3,"from":"/features/book-appointments","to":"/industry/healthcare-industry","n":3},{"c":3,"from":"/features/book-appointments","to":"/pricing","n":3},{"c":3,"from":"/features/book-appointments","to":"/use-cases/receptionists","n":1},{"c":3,"from":"/features/call-transfer","to":"(blog & content)","n":3},{"c":3,"from":"/features/call-transfer","to":"(landing pages)","n":13},{"c":3,"from":"/features/call-transfer","to":"(other site pages)","n":3},{"c":3,"from":"/features/call-transfer","to":"/careers","n":1},{"c":3,"from":"/features/call-transfer","to":"/enterprise-plan","n":5},{"c":3,"from":"/features/call-transfer","to":"/features/book-appointments","n":2},{"c":3,"from":"/features/call-transfer","to":"/industry/healthcare-industry","n":1},{"c":3,"from":"/features/call-transfer","to":"/pricing","n":3},{"c":3,"from":"/features/call-transfer","to":"/use-cases/receptionists","n":1},{"c":3,"from":"/features/call-transfer","to":"homepage","n":3},{"c":3,"from":"/industry/healthcare-industry","to":"(blog & content)","n":5},{"c":3,"from":"/industry/healthcare-industry","to":"(landing pages)","n":9},{"c":3,"from":"/industry/healthcare-industry","to":"(other site pages)","n":1},{"c":3,"from":"/industry/healthcare-industry","to":"/careers","n":1},{"c":3,"from":"/industry/healthcare-industry","to":"/enterprise-plan","n":2},{"c":3,"from":"/industry/healthcare-industry","to":"/features/book-appointments","n":4},{"c":3,"from":"/industry/healthcare-industry","to":"/features/call-transfer","n":5},{"c":3,"from":"/industry/healthcare-industry","to":"/partners","n":1},{"c":3,"from":"/industry/healthcare-industry","to":"/pricing","n":1},{"c":3,"from":"/industry/healthcare-industry","to":"homepage","n":2},{"c":3,"from":"/partners","to":"(blog & content)","n":2},{"c":3,"from":"/partners","to":"(landing pages)","n":9},{"c":3,"from":"/partners","to":"(other site pages)","n":2},{"c":3,"from":"/partners","to":"/careers","n":3},{"c":3,"from":"/partners","to":"/enterprise-plan","n":1},{"c":3,"from":"/partners","to":"/pricing","n":1},{"c":3,"from":"/partners","to":"/use-cases/receptionists","n":1},{"c":3,"from":"/partners","to":"homepage","n":1},{"c":3,"from":"/pricing","to":"(blog & content)","n":18},{"c":3,"from":"/pricing","to":"(landing pages)","n":49},{"c":3,"from":"/pricing","to":"(other site pages)","n":14},{"c":3,"from":"/pricing","to":"/about-us","n":6},{"c":3,"from":"/pricing","to":"/careers","n":8},{"c":3,"from":"/pricing","to":"/enterprise-plan","n":11},{"c":3,"from":"/pricing","to":"/features/book-appointments","n":9},{"c":3,"from":"/pricing","to":"/features/call-transfer","n":2},{"c":3,"from":"/pricing","to":"/industry/healthcare-industry","n":4},{"c":3,"from":"/pricing","to":"/partners","n":3},{"c":3,"from":"/pricing","to":"/use-cases/receptionists","n":7},{"c":3,"from":"/pricing","to":"homepage","n":19},{"c":3,"from":"/use-cases/receptionists","to":"(landing pages)","n":8},{"c":3,"from":"/use-cases/receptionists","to":"(other site pages)","n":1},{"c":3,"from":"/use-cases/receptionists","to":"/enterprise-plan","n":1},{"c":3,"from":"/use-cases/receptionists","to":"/features/book-appointments","n":1},{"c":3,"from":"/use-cases/receptionists","to":"/industry/healthcare-industry","n":1},{"c":3,"from":"/use-cases/receptionists","to":"/pricing","n":2},{"c":3,"from":"/use-cases/receptionists","to":"homepage","n":4},{"c":3,"from":"homepage","to":"(blog & content)","n":18},{"c":3,"from":"homepage","to":"(landing pages)","n":34},{"c":3,"from":"homepage","to":"(other site pages)","n":13},{"c":3,"from":"homepage","to":"/about-us","n":1},{"c":3,"from":"homepage","to":"/careers","n":4},{"c":3,"from":"homepage","to":"/enterprise-plan","n":9},{"c":3,"from":"homepage","to":"/features/book-appointments","n":8},{"c":3,"from":"homepage","to":"/features/call-transfer","n":6},{"c":3,"from":"homepage","to":"/industry/healthcare-industry","n":4},{"c":3,"from":"homepage","to":"/partners","n":1},{"c":3,"from":"homepage","to":"/pricing","n":22},{"c":3,"from":"homepage","to":"/use-cases/receptionists","n":1},{"c":4,"from":"(blog & content)","to":"(blog & content)","n":78},{"c":4,"from":"(blog & content)","to":"(landing pages)","n":22},{"c":4,"from":"(blog & content)","to":"(other site pages)","n":12},{"c":4,"from":"(blog & content)","to":"/about-us","n":2},{"c":4,"from":"(blog & content)","to":"/careers","n":3},{"c":4,"from":"(blog & content)","to":"/enterprise-plan","n":3},{"c":4,"from":"(blog & content)","to":"/features/book-appointments","n":2},{"c":4,"from":"(blog & content)","to":"/industry/healthcare-industry","n":5},{"c":4,"from":"(blog & content)","to":"/pricing","n":4},{"c":4,"from":"(blog & content)","to":"/use-cases/receptionists","n":1},{"c":4,"from":"(blog & content)","to":"homepage","n":11},{"c":4,"from":"(landing pages)","to":"(blog & content)","n":22},{"c":4,"from":"(landing pages)","to":"(landing pages)","n":112},{"c":4,"from":"(landing pages)","to":"(other site pages)","n":18},{"c":4,"from":"(landing pages)","to":"/about-us","n":5},{"c":4,"from":"(landing pages)","to":"/careers","n":3},{"c":4,"from":"(landing pages)","to":"/enterprise-plan","n":11},{"c":4,"from":"(landing pages)","to":"/features/book-appointments","n":13},{"c":4,"from":"(landing pages)","to":"/features/call-transfer","n":10},{"c":4,"from":"(landing pages)","to":"/industry/healthcare-industry","n":5},{"c":4,"from":"(landing pages)","to":"/partners","n":8},{"c":4,"from":"(landing pages)","to":"/pricing","n":16},{"c":4,"from":"(landing pages)","to":"/use-cases/receptionists","n":5},{"c":4,"from":"(landing pages)","to":"homepage","n":15},{"c":4,"from":"(other site pages)","to":"(blog & content)","n":16},{"c":4,"from":"(other site pages)","to":"(landing pages)","n":17},{"c":4,"from":"(other site pages)","to":"(other site pages)","n":43},{"c":4,"from":"(other site pages)","to":"/about-us","n":1},{"c":4,"from":"(other site pages)","to":"/careers","n":1},{"c":4,"from":"(other site pages)","to":"/enterprise-plan","n":4},{"c":4,"from":"(other site pages)","to":"/es","n":1},{"c":4,"from":"(other site pages)","to":"/features/book-appointments","n":1},{"c":4,"from":"(other site pages)","to":"/features/call-transfer","n":1},{"c":4,"from":"(other site pages)","to":"/industry/healthcare-industry","n":2},{"c":4,"from":"(other site pages)","to":"/partners","n":1},{"c":4,"from":"(other site pages)","to":"/pricing","n":7},{"c":4,"from":"(other site pages)","to":"/use-cases/receptionists","n":3},{"c":4,"from":"(other site pages)","to":"homepage","n":4},{"c":4,"from":"/about-us","to":"(blog & content)","n":3},{"c":4,"from":"/about-us","to":"(landing pages)","n":5},{"c":4,"from":"/about-us","to":"(other site pages)","n":1},{"c":4,"from":"/about-us","to":"/enterprise-plan","n":1},{"c":4,"from":"/about-us","to":"/features/call-transfer","n":3},{"c":4,"from":"/about-us","to":"/industry/healthcare-industry","n":1},{"c":4,"from":"/about-us","to":"/pricing","n":2},{"c":4,"from":"/about-us","to":"homepage","n":1},{"c":4,"from":"/careers","to":"(blog & content)","n":9},{"c":4,"from":"/careers","to":"(landing pages)","n":5},{"c":4,"from":"/careers","to":"(other site pages)","n":2},{"c":4,"from":"/careers","to":"/about-us","n":1},{"c":4,"from":"/careers","to":"/enterprise-plan","n":2},{"c":4,"from":"/careers","to":"/features/call-transfer","n":1},{"c":4,"from":"/careers","to":"/industry/healthcare-industry","n":1},{"c":4,"from":"/careers","to":"/pricing","n":1},{"c":4,"from":"/careers","to":"homepage","n":1},{"c":4,"from":"/enterprise-plan","to":"(blog & content)","n":2},{"c":4,"from":"/enterprise-plan","to":"(landing pages)","n":13},{"c":4,"from":"/enterprise-plan","to":"(other site pages)","n":3},{"c":4,"from":"/enterprise-plan","to":"/about-us","n":4},{"c":4,"from":"/enterprise-plan","to":"/careers","n":1},{"c":4,"from":"/enterprise-plan","to":"/features/book-appointments","n":1},{"c":4,"from":"/enterprise-plan","to":"/industry/healthcare-industry","n":2},{"c":4,"from":"/enterprise-plan","to":"/pricing","n":3},{"c":4,"from":"/enterprise-plan","to":"/use-cases/receptionists","n":1},{"c":4,"from":"/enterprise-plan","to":"homepage","n":1},{"c":4,"from":"/features/book-appointments","to":"(blog & content)","n":6},{"c":4,"from":"/features/book-appointments","to":"(landing pages)","n":10},{"c":4,"from":"/features/book-appointments","to":"/enterprise-plan","n":1},{"c":4,"from":"/features/book-appointments","to":"/features/call-transfer","n":3},{"c":4,"from":"/features/book-appointments","to":"/industry/healthcare-industry","n":1},{"c":4,"from":"/features/book-appointments","to":"/use-cases/receptionists","n":1},{"c":4,"from":"/features/book-appointments","to":"homepage","n":1},{"c":4,"from":"/features/call-transfer","to":"(blog & content)","n":3},{"c":4,"from":"/features/call-transfer","to":"(landing pages)","n":11},{"c":4,"from":"/features/call-transfer","to":"(other site pages)","n":1},{"c":4,"from":"/features/call-transfer","to":"/careers","n":1},{"c":4,"from":"/features/call-transfer","to":"/enterprise-plan","n":1},{"c":4,"from":"/features/call-transfer","to":"/industry/healthcare-industry","n":4},{"c":4,"from":"/features/call-transfer","to":"/partners","n":1},{"c":4,"from":"/features/call-transfer","to":"/pricing","n":2},{"c":4,"from":"/features/call-transfer","to":"homepage","n":1},{"c":4,"from":"/industry/healthcare-industry","to":"(blog & content)","n":3},{"c":4,"from":"/industry/healthcare-industry","to":"(landing pages)","n":2},{"c":4,"from":"/industry/healthcare-industry","to":"(other site pages)","n":2},{"c":4,"from":"/industry/healthcare-industry","to":"/enterprise-plan","n":3},{"c":4,"from":"/industry/healthcare-industry","to":"/features/book-appointments","n":1},{"c":4,"from":"/industry/healthcare-industry","to":"/partners","n":1},{"c":4,"from":"/industry/healthcare-industry","to":"/pricing","n":5},{"c":4,"from":"/industry/healthcare-industry","to":"/use-cases/receptionists","n":2},{"c":4,"from":"/industry/healthcare-industry","to":"homepage","n":3},{"c":4,"from":"/partners","to":"(blog & content)","n":4},{"c":4,"from":"/partners","to":"(landing pages)","n":13},{"c":4,"from":"/partners","to":"(other site pages)","n":3},{"c":4,"from":"/partners","to":"/pricing","n":1},{"c":4,"from":"/partners","to":"homepage","n":3},{"c":4,"from":"/pricing","to":"(blog & content)","n":11},{"c":4,"from":"/pricing","to":"(landing pages)","n":16},{"c":4,"from":"/pricing","to":"(other site pages)","n":7},{"c":4,"from":"/pricing","to":"/about-us","n":1},{"c":4,"from":"/pricing","to":"/enterprise-plan","n":5},{"c":4,"from":"/pricing","to":"/industry/healthcare-industry","n":2},{"c":4,"from":"/pricing","to":"/partners","n":2},{"c":4,"from":"/pricing","to":"/use-cases/receptionists","n":1},{"c":4,"from":"/pricing","to":"homepage","n":4},{"c":4,"from":"/use-cases/receptionists","to":"(landing pages)","n":6},{"c":4,"from":"/use-cases/receptionists","to":"(other site pages)","n":2},{"c":4,"from":"/use-cases/receptionists","to":"/features/book-appointments","n":1},{"c":4,"from":"/use-cases/receptionists","to":"/industry/healthcare-industry","n":1},{"c":4,"from":"/use-cases/receptionists","to":"/pricing","n":2},{"c":4,"from":"/use-cases/receptionists","to":"homepage","n":1},{"c":4,"from":"homepage","to":"(blog & content)","n":10},{"c":4,"from":"homepage","to":"(landing pages)","n":20},{"c":4,"from":"homepage","to":"(other site pages)","n":7},{"c":4,"from":"homepage","to":"/careers","n":3},{"c":4,"from":"homepage","to":"/enterprise-plan","n":4},{"c":4,"from":"homepage","to":"/features/call-transfer","n":4},{"c":4,"from":"homepage","to":"/industry/healthcare-industry","n":2},{"c":4,"from":"homepage","to":"/partners","n":2},{"c":4,"from":"homepage","to":"/pricing","n":5},{"c":5,"from":"(blog & content)","to":"(blog & content)","n":59},{"c":5,"from":"(blog & content)","to":"(landing pages)","n":21},{"c":5,"from":"(blog & content)","to":"(other site pages)","n":16},{"c":5,"from":"(blog & content)","to":"/careers","n":4},{"c":5,"from":"(blog & content)","to":"/enterprise-plan","n":6},{"c":5,"from":"(blog & content)","to":"/es","n":1},{"c":5,"from":"(blog & content)","to":"/partners","n":2},{"c":5,"from":"(blog & content)","to":"/pricing","n":1},{"c":5,"from":"(blog & content)","to":"/use-cases/receptionists","n":2},{"c":5,"from":"(blog & content)","to":"homepage","n":5},{"c":5,"from":"(landing pages)","to":"(blog & content)","n":17},{"c":5,"from":"(landing pages)","to":"(landing pages)","n":89},{"c":5,"from":"(landing pages)","to":"(other site pages)","n":20},{"c":5,"from":"(landing pages)","to":"/about-us","n":2},{"c":5,"from":"(landing pages)","to":"/careers","n":1},{"c":5,"from":"(landing pages)","to":"/enterprise-plan","n":4},{"c":5,"from":"(landing pages)","to":"/features/book-appointments","n":5},{"c":5,"from":"(landing pages)","to":"/features/call-transfer","n":5},{"c":5,"from":"(landing pages)","to":"/industry/healthcare-industry","n":2},{"c":5,"from":"(landing pages)","to":"/partners","n":12},{"c":5,"from":"(landing pages)","to":"/pricing","n":6},{"c":5,"from":"(landing pages)","to":"/use-cases/receptionists","n":4},{"c":5,"from":"(landing pages)","to":"homepage","n":6},{"c":5,"from":"(other site pages)","to":"(blog & content)","n":12},{"c":5,"from":"(other site pages)","to":"(landing pages)","n":10},{"c":5,"from":"(other site pages)","to":"(other site pages)","n":32},{"c":5,"from":"(other site pages)","to":"/about-us","n":3},{"c":5,"from":"(other site pages)","to":"/careers","n":2},{"c":5,"from":"(other site pages)","to":"/enterprise-plan","n":3},{"c":5,"from":"(other site pages)","to":"/es","n":1},{"c":5,"from":"(other site pages)","to":"/partners","n":1},{"c":5,"from":"(other site pages)","to":"/pricing","n":3},{"c":5,"from":"/about-us","to":"(blog & content)","n":1},{"c":5,"from":"/about-us","to":"(landing pages)","n":2},{"c":5,"from":"/about-us","to":"(other site pages)","n":1},{"c":5,"from":"/about-us","to":"/careers","n":2},{"c":5,"from":"/about-us","to":"/pricing","n":2},{"c":5,"from":"/careers","to":"(landing pages)","n":3},{"c":5,"from":"/careers","to":"/about-us","n":1},{"c":5,"from":"/careers","to":"/pricing","n":2},{"c":5,"from":"/careers","to":"homepage","n":1},{"c":5,"from":"/enterprise-plan","to":"(blog & content)","n":3},{"c":5,"from":"/enterprise-plan","to":"(landing pages)","n":4},{"c":5,"from":"/enterprise-plan","to":"/about-us","n":1},{"c":5,"from":"/enterprise-plan","to":"/careers","n":1},{"c":5,"from":"/enterprise-plan","to":"/features/book-appointments","n":1},{"c":5,"from":"/enterprise-plan","to":"/features/call-transfer","n":1},{"c":5,"from":"/enterprise-plan","to":"/pricing","n":4},{"c":5,"from":"/es","to":"/pricing","n":1},{"c":5,"from":"/features/book-appointments","to":"(blog & content)","n":1},{"c":5,"from":"/features/book-appointments","to":"(landing pages)","n":7},{"c":5,"from":"/features/book-appointments","to":"(other site pages)","n":1},{"c":5,"from":"/features/book-appointments","to":"/industry/healthcare-industry","n":2},{"c":5,"from":"/features/call-transfer","to":"(landing pages)","n":9},{"c":5,"from":"/features/call-transfer","to":"(other site pages)","n":1},{"c":5,"from":"/features/call-transfer","to":"/about-us","n":3},{"c":5,"from":"/features/call-transfer","to":"/features/book-appointments","n":2},{"c":5,"from":"/features/call-transfer","to":"/pricing","n":2},{"c":5,"from":"/features/call-transfer","to":"homepage","n":1},{"c":5,"from":"/industry/healthcare-industry","to":"(blog & content)","n":4},{"c":5,"from":"/industry/healthcare-industry","to":"(landing pages)","n":6},{"c":5,"from":"/industry/healthcare-industry","to":"(other site pages)","n":2},{"c":5,"from":"/industry/healthcare-industry","to":"/about-us","n":2},{"c":5,"from":"/industry/healthcare-industry","to":"/enterprise-plan","n":2},{"c":5,"from":"/industry/healthcare-industry","to":"/pricing","n":1},{"c":5,"from":"/industry/healthcare-industry","to":"homepage","n":1},{"c":5,"from":"/partners","to":"(blog & content)","n":2},{"c":5,"from":"/partners","to":"(landing pages)","n":6},{"c":5,"from":"/partners","to":"/enterprise-plan","n":1},{"c":5,"from":"/partners","to":"/features/book-appointments","n":1},{"c":5,"from":"/partners","to":"/pricing","n":2},{"c":5,"from":"/pricing","to":"(blog & content)","n":7},{"c":5,"from":"/pricing","to":"(landing pages)","n":8},{"c":5,"from":"/pricing","to":"(other site pages)","n":2},{"c":5,"from":"/pricing","to":"/about-us","n":2},{"c":5,"from":"/pricing","to":"/es","n":1},{"c":5,"from":"/pricing","to":"/industry/healthcare-industry","n":4},{"c":5,"from":"/pricing","to":"/partners","n":3},{"c":5,"from":"/use-cases/receptionists","to":"(landing pages)","n":3},{"c":5,"from":"/use-cases/receptionists","to":"/features/book-appointments","n":3},{"c":5,"from":"/use-cases/receptionists","to":"/pricing","n":2},{"c":5,"from":"homepage","to":"(blog & content)","n":7},{"c":5,"from":"homepage","to":"(landing pages)","n":5},{"c":5,"from":"homepage","to":"(other site pages)","n":5},{"c":5,"from":"homepage","to":"/careers","n":1},{"c":5,"from":"homepage","to":"/enterprise-plan","n":1},{"c":5,"from":"homepage","to":"/features/book-appointments","n":3},{"c":5,"from":"homepage","to":"/pricing","n":1},{"c":5,"from":"homepage","to":"/use-cases/receptionists","n":1}],"ends":[{"c":0,"from":"chatgpt","end":"booked","n":2},{"c":0,"from":"google ads","end":"booked","n":4},{"c":0,"from":"google organic","end":"booked","n":10},{"c":0,"from":"untagged / direct","end":"booked","n":17},{"c":1,"from":"(blog & content)","end":"exit","n":1350},{"c":1,"from":"(landing pages)","end":"booked","n":1},{"c":1,"from":"(landing pages)","end":"exit","n":561},{"c":1,"from":"(other site pages)","end":"booked","n":5},{"c":1,"from":"(other site pages)","end":"exit","n":312},{"c":1,"from":"/about-us","end":"exit","n":32},{"c":1,"from":"/blog/how-to-call-back-no-caller-id","end":"exit","n":509},{"c":1,"from":"/careers","end":"exit","n":687},{"c":1,"from":"/enterprise-plan","end":"booked","n":82},{"c":1,"from":"/es","end":"booked","n":5},{"c":1,"from":"/es","end":"exit","n":384},{"c":1,"from":"/features/book-appointments","end":"exit","n":18},{"c":1,"from":"/features/call-transfer","end":"exit","n":7},{"c":1,"from":"/industry/healthcare-industry","end":"exit","n":23},{"c":1,"from":"/partners","end":"exit","n":20},{"c":1,"from":"/pricing","end":"booked","n":1},{"c":1,"from":"/pricing","end":"exit","n":717},{"c":1,"from":"/use-cases/receptionists","end":"exit","n":57},{"c":1,"from":"homepage","end":"booked","n":11},{"c":1,"from":"homepage","end":"exit","n":11910},{"c":2,"from":"(blog & content)","end":"booked","n":1},{"c":2,"from":"(blog & content)","end":"exit","n":439},{"c":2,"from":"(landing pages)","end":"booked","n":2},{"c":2,"from":"(landing pages)","end":"exit","n":237},{"c":2,"from":"(other site pages)","end":"booked","n":3},{"c":2,"from":"(other site pages)","end":"exit","n":221},{"c":2,"from":"/about-us","end":"exit","n":60},{"c":2,"from":"/blog/how-to-call-back-no-caller-id","end":"exit","n":5},{"c":2,"from":"/careers","end":"exit","n":172},{"c":2,"from":"/enterprise-plan","end":"booked","n":174},{"c":2,"from":"/es","end":"booked","n":3},{"c":2,"from":"/es","end":"exit","n":62},{"c":2,"from":"/features/book-appointments","end":"exit","n":20},{"c":2,"from":"/features/call-transfer","end":"exit","n":19},{"c":2,"from":"/industry/healthcare-industry","end":"exit","n":22},{"c":2,"from":"/partners","end":"exit","n":11},{"c":2,"from":"/pricing","end":"booked","n":7},{"c":2,"from":"/pricing","end":"exit","n":954},{"c":2,"from":"/use-cases/receptionists","end":"exit","n":31},{"c":2,"from":"homepage","end":"booked","n":9},{"c":2,"from":"homepage","end":"exit","n":1221},{"c":3,"from":"(blog & content)","end":"booked","n":1},{"c":3,"from":"(blog & content)","end":"exit","n":190},{"c":3,"from":"(landing pages)","end":"booked","n":1},{"c":3,"from":"(landing pages)","end":"exit","n":187},{"c":3,"from":"(other site pages)","end":"exit","n":106},{"c":3,"from":"/about-us","end":"exit","n":44},{"c":3,"from":"/careers","end":"exit","n":43},{"c":3,"from":"/enterprise-plan","end":"booked","n":118},{"c":3,"from":"/es","end":"exit","n":8},{"c":3,"from":"/features/book-appointments","end":"exit","n":21},{"c":3,"from":"/features/call-transfer","end":"exit","n":22},{"c":3,"from":"/industry/healthcare-industry","end":"booked","n":1},{"c":3,"from":"/industry/healthcare-industry","end":"exit","n":14},{"c":3,"from":"/partners","end":"exit","n":8},{"c":3,"from":"/pricing","end":"booked","n":6},{"c":3,"from":"/pricing","end":"exit","n":174},{"c":3,"from":"/use-cases/receptionists","end":"exit","n":14},{"c":3,"from":"homepage","end":"booked","n":4},{"c":3,"from":"homepage","end":"exit","n":200},{"c":4,"from":"(blog & content)","end":"exit","n":100},{"c":4,"from":"(landing pages)","end":"exit","n":99},{"c":4,"from":"(other site pages)","end":"exit","n":48},{"c":4,"from":"/about-us","end":"booked","n":1},{"c":4,"from":"/about-us","end":"exit","n":9},{"c":4,"from":"/careers","end":"exit","n":12},{"c":4,"from":"/enterprise-plan","end":"booked","n":38},{"c":4,"from":"/es","end":"exit","n":3},{"c":4,"from":"/features/book-appointments","end":"booked","n":1},{"c":4,"from":"/features/book-appointments","end":"exit","n":11},{"c":4,"from":"/features/call-transfer","end":"exit","n":11},{"c":4,"from":"/industry/healthcare-industry","end":"exit","n":7},{"c":4,"from":"/partners","end":"exit","n":5},{"c":4,"from":"/pricing","end":"booked","n":7},{"c":4,"from":"/pricing","end":"exit","n":59},{"c":4,"from":"/use-cases/receptionists","end":"exit","n":7},{"c":4,"from":"homepage","end":"booked","n":1},{"c":4,"from":"homepage","end":"exit","n":53},{"c":5,"from":"(blog & content)","end":"exit","n":50},{"c":5,"from":"(landing pages)","end":"booked","n":3},{"c":5,"from":"(landing pages)","end":"exit","n":76},{"c":5,"from":"(other site pages)","end":"exit","n":34},{"c":5,"from":"/about-us","end":"exit","n":6},{"c":5,"from":"/careers","end":"exit","n":5},{"c":5,"from":"/enterprise-plan","end":"booked","n":20},{"c":5,"from":"/features/book-appointments","end":"booked","n":1},{"c":5,"from":"/features/book-appointments","end":"exit","n":7},{"c":5,"from":"/features/call-transfer","end":"exit","n":4},{"c":5,"from":"/industry/healthcare-industry","end":"exit","n":8},{"c":5,"from":"/partners","end":"booked","n":1},{"c":5,"from":"/partners","end":"exit","n":2},{"c":5,"from":"/pricing","end":"booked","n":1},{"c":5,"from":"/pricing","end":"exit","n":20},{"c":5,"from":"/use-cases/receptionists","end":"exit","n":6},{"c":5,"from":"homepage","end":"exit","n":22},{"c":6,"from":"(blog & content)","end":"booked","n":2},{"c":6,"from":"(blog & content)","end":"exit","n":40},{"c":6,"from":"(landing pages)","end":"booked","n":4},{"c":6,"from":"(landing pages)","end":"exit","n":40},{"c":6,"from":"(other site pages)","end":"booked","n":1},{"c":6,"from":"(other site pages)","end":"exit","n":14},{"c":6,"from":"/about-us","end":"exit","n":7},{"c":6,"from":"/careers","end":"exit","n":6},{"c":6,"from":"/enterprise-plan","end":"booked","n":6},{"c":6,"from":"/es","end":"exit","n":2},{"c":6,"from":"/features/book-appointments","end":"exit","n":4},{"c":6,"from":"/features/call-transfer","end":"exit","n":1},{"c":6,"from":"/industry/healthcare-industry","end":"exit","n":2},{"c":6,"from":"/partners","end":"exit","n":4},{"c":6,"from":"/pricing","end":"exit","n":10},{"c":6,"from":"/use-cases/receptionists","end":"exit","n":2},{"c":6,"from":"homepage","end":"booked","n":1},{"c":6,"from":"homepage","end":"exit","n":3},{"c":6,"from":"(blog & content)","end":"booked","n":2,"t":1},{"c":6,"from":"(blog & content)","end":"exit","n":69,"t":1},{"c":6,"from":"(landing pages)","end":"booked","n":5,"t":1},{"c":6,"from":"(landing pages)","end":"exit","n":124,"t":1},{"c":6,"from":"(other site pages)","end":"booked","n":3,"t":1},{"c":6,"from":"(other site pages)","end":"exit","n":62,"t":1},{"c":6,"from":"/about-us","end":"exit","n":7,"t":1},{"c":6,"from":"/careers","end":"booked","n":1,"t":1},{"c":6,"from":"/careers","end":"exit","n":4,"t":1},{"c":6,"from":"/enterprise-plan","end":"exit","n":11,"t":1},{"c":6,"from":"/es","end":"exit","n":1,"t":1},{"c":6,"from":"/features/book-appointments","end":"exit","n":11,"t":1},{"c":6,"from":"/features/call-transfer","end":"exit","n":5,"t":1},{"c":6,"from":"/industry/healthcare-industry","end":"exit","n":6,"t":1},{"c":6,"from":"/partners","end":"exit","n":14,"t":1},{"c":6,"from":"/pricing","end":"exit","n":17,"t":1},{"c":6,"from":"/use-cases/receptionists","end":"exit","n":5,"t":1},{"c":6,"from":"homepage","end":"exit","n":10,"t":1}]}}/*DATA-END*/;
+
+const SK = DATA.sankey, MAX = SK.maxstep;
+const ALL = SK.mode === "all"; // all-traffic variant: same code, different data + wording
+const LAKE = SK.mode === "lakehouse"; // warehouse-sourced all-traffic variant
+// both all-traffic datasets end at the form, not at a booking — booking is not
+// observable at that grain, so every "booked" affordance changes verb
+const FORMEND = ALL || LAKE;
+const BOOK_VERB = FORMEND ? "reach form" : "book";
+const CSS = getComputedStyle(document.documentElement);
+const PCOL = {
+  www: CSS.getPropertyValue("--www").trim(),
+  dashboard: CSS.getPropertyValue("--dashboard").trim(),
+  docs: CSS.getPropertyValue("--docs").trim(),
+};
+const BOOKED_C = CSS.getPropertyValue("--booked").trim();
+const EXIT_C = CSS.getPropertyValue("--exit").trim();
+const GATES = new Set(["/enterprise-plan"]);
+
+const APP_ID = "app dashboard";
+const ORIGINS = new Set(DATA.sankey.origins || []);
+
+// Content groups: color + stacking order (validated adjacency: blue → yellow →
+// violet → gray → aqua → orange; keep in sync with site_group() in build_data.py)
+function nodeGroup(id) {
+  if (id === APP_ID || id.startsWith("dashboard.")) return "dashboard";
+  if (id.startsWith("docs.") || id === "(other docs pages)") return "docs";
+  if (id === "homepage" || id === "/pricing" || id === "/enterprise-plan") return "core";
+  if (id === "(blog & content)" || /^\/(blog|glossary)/.test(id)) return "blog";
+  if (id === "(landing pages)" || /^\/(features|industry|use-cases|comparisons|integrations|partner|app-partner|case-study|solutions|ai-)/.test(id)) return "landing";
+  if (id === "(careers)" || id.startsWith("/careers")) return "careers";
+  return "other";
+}
+const GCOL = { core: PCOL.www, blog: "#c98500", landing: "#9085e9", careers: "#8e93a6",
+               other: "#8e93a6", docs: PCOL.docs, dashboard: PCOL.dashboard };
+const LEGEND = [["core", "core site (home · pricing · form)"], ["blog", "blog & content"],
+                ["landing", "landing pages"], ["careers", "careers & other"],
+                ["docs", "docs"], ["dashboard", "app dashboard"]];
+const isApp = id => id.startsWith("dashboard.") || id === "(other dashboard)";
+const propOf = id => {
+  if (id === APP_ID) return "dashboard";
+  if (id.startsWith("(other")) return id.includes("dashboard") ? "dashboard" : id.includes("docs") ? "docs" : "www";
+  if (id.startsWith("dashboard.")) return "dashboard";
+  if (id.startsWith("docs.")) return "docs";
+  return "www";
+};
+const isOther = id => id.startsWith("(other");
+
+/* ---------- build ---------- */
+// The app dashboard is an origin and an outcome, never a middle step (a marketing
+// funnel: who arrives from the product, who gets handed to it — decided at data
+// level in build_data.py; interior marketing→app→marketing hops are spliced there).
+const TERM = MAX + 1; // outcome column: real fates only — BOOKED / app dashboard / EXIT
+let nodes, links, cols, scale;
+function build() {
+const mapId = id => id;
+// node key: `${col}|${id}` — columns: 0 START, 1..MAX pages, MAX+1 outcome
+nodes = new Map();
+function node(col, id) {
+  const k = col + "|" + id;
+  if (!nodes.has(k)) nodes.set(k, { col, id, in: 0, out: 0, srcOff: 0, dstOff: 0 });
+  return nodes.get(k);
+}
+// accumulate first: after collapsing, many raw rows merge into one link
+links = [];
+const acc = new Map();
+// trunc is part of the key: a truncated ribbon is drawn dashed, so it must not
+// merge with the solid one leaving the same node for the same outcome
+const addL = (sCol, sId, dCol, dId, n, kind, trunc) => {
+  const k = sCol + "|" + sId + "|" + dId + "|" + kind + "|" + (trunc ? "t" : "");
+  if (acc.has(k)) acc.get(k).n += n;
+  else acc.set(k, { sCol, sId, dCol, dId, n, kind, trunc });
+};
+for (const f of SK.flows)
+  addL(f.c, f.from === "__START__" ? "START" : mapId(f.from),
+       f.c + 1, f.to === "__CONTINUES__" ? "still browsing" : mapId(f.to), f.n, "flow");
+for (const e of SK.ends)
+  addL(e.c, mapId(e.from), TERM,
+       e.end === "booked" ? "BOOKED" : e.end === "app" ? APP_ID : "EXIT", e.n, e.end, e.t);
+for (const a of acc.values()) {
+  const s = node(a.sCol, a.sId), d = node(a.dCol, a.dId);
+  s.out += a.n; d.in += a.n;
+  links.push({ src: s, dst: d, n: a.n, kind: a.kind, trunc: a.trunc });
+}
+const totBooked = SK.ends.filter(e => e.end === "booked").reduce((a, e) => a + e.n, 0);
+const sessions = SK.included ?? DATA.meta.sessions;
+const excluded = Object.values(SK.excluded || {}).reduce((a, b) => a + b, 0);
+document.getElementById("meta").textContent = LAKE
+  ? `${sessions.toLocaleString()} sessions · ${totBooked.toLocaleString()} reach the form (${(totBooked / sessions * 100).toFixed(2)}%) · ${DATA.meta.pageviews.toLocaleString()} pageviews · ${DATA.meta.date_range[0]} → ${DATA.meta.date_range[1]}`
+  : ALL
+  ? `${sessions} identified sessions · ${totBooked} reach the form (${SK.confirmed || 0} confirmed submissions) · ${excluded} duplicate/empty export rows dropped · ${DATA.meta.date_range[0]} → ${DATA.meta.date_range[1]}`
+  : `${sessions} marketing sessions · ${totBooked} book · ${excluded} sessions never touch the site (excluded) · ${DATA.meta.date_range[0]} → ${DATA.meta.date_range[1]}`;
+
+/* ---------- layout ---------- */
+const Wv = 1500, Hv = 860;
+const M = { l: 26, r: 150, t: 78, b: 64 };
+const NCOLS = MAX + 2;
+const colX = c => M.l + c * ((Wv - M.l - M.r) / (NCOLS - 1));
+const NW = 14, GAP = 7;
+
+// column order: the gate is pinned top with BOOKED top-right, so the story lane
+// (gate + www) stays adjacent to its destination; EXIT is pinned bottom-right.
+// Keeping an anchor's feeder group adjacent beats raw size-sorting for crossings
+// (see the Sankey best-practices research note § node order)
+const GROUP_RANK = { core: 2, blog: 3, landing: 4, careers: 5, other: 5, docs: 6, dashboard: 7 };
+const groupRank = n =>
+  GATES.has(n.id) || n.id === "BOOKED" ? 0 :
+  n.id === "START" || n.id === "still browsing" ? 1 :
+  n.id === "EXIT" ? 9 :
+  GROUP_RANK[nodeGroup(n.id)];
+
+cols = [];
+for (let c = 0; c < NCOLS; c++) {
+  const list = [...nodes.values()].filter(n => n.col === c);
+  list.sort((a, b) => groupRank(a) - groupRank(b) || Math.max(b.in, b.out) - Math.max(a.in, a.out));
+  cols.push(list);
+}
+const usableH = Hv - M.t - M.b;
+// per-column: value budget = usable height minus this column's gaps; global scale = tightest
+scale = Math.min(...cols.map(list => {
+  const sum = list.reduce((a, n) => a + Math.max(n.in, n.out), 0);
+  return sum ? (usableH - GAP * Math.max(0, list.length - 1)) / sum : Infinity;
+})) * 0.98;
+
+for (let c = 0; c < NCOLS; c++) {
+  // extra air below a gate so heavy ribbons from its neighbor don't read as its own
+  const gateAir = 12;
+  const hSum = cols[c].reduce((a, n) => a + Math.max(n.in, n.out) * scale
+    + (GATES.has(n.id) ? gateAir : 0), 0) + GAP * Math.max(0, cols[c].length - 1);
+  let y = M.t + (usableH - hSum) / 2;
+  for (const n of cols[c]) {
+    n.h = Math.max(2, Math.max(n.in, n.out) * scale);
+    n.x = colX(c); n.y = y;
+    y += n.h + GAP + (GATES.has(n.id) ? gateAir : 0);
+  }
+}
+
+/* ---------- link routing ---------- */
+// every link — including outcome links — is node-to-node; outgoing stacks order
+// by destination y (booked ribbons leave the top of a node's stack, exits the
+// bottom), incoming stacks by source column then y (early steps arrive on top)
+links.sort((a, b) => a.src.col - b.src.col || a.dst.y - b.dst.y);
+for (const l of links) { l.sy = l.src.y + l.src.srcOff; l.src.srcOff += l.n * scale; }
+links.sort((a, b) => a.dst.col - b.dst.col || a.src.col - b.src.col || a.src.y - b.src.y);
+for (const l of links) { l.dy = l.dst.y + l.dst.dstOff; l.dst.dstOff += l.n * scale; }
+
+/* ---------- render ---------- */
+const S = [];
+S.push(`<svg viewBox="0 0 ${Wv} ${Hv}" xmlns="http://www.w3.org/2000/svg">`);
+
+// column headers — the last column is the outcome distribution, comparable by height
+const heads = ["origin*", ...Array.from({ length: MAX }, (_, i) => "step " + (i + 1)), "outcome"];
+heads.forEach((h, c) => S.push(`<text class="head" x="${colX(c) + NW / 2}" y="${M.t - 8}" text-anchor="middle">${h}</text>`));
+
+// links, painted in z-order: exit mass at the back, page flows, booked story on top
+let li = 0;
+const zRank = { exit: 0, app: 0.5, flow: 1, booked: 2 };
+const ordered = [...links].sort((a, b) => zRank[a.kind] - zRank[b.kind]);
+for (const l of ordered) {
+  const w = Math.max(1.2, l.n * scale);
+  const x1 = l.src.x + NW, x2 = l.dst.x;
+  const y1 = l.sy + w / 2, y2 = l.dy + w / 2;
+  const mx = (x1 + x2) / 2;
+  let col, op, tip;
+  if (l.kind === "booked") {
+    col = BOOKED_C; op = 0.55;
+    tip = `${esc(l.src.id)} → ${FORMEND ? "FORM" : "BOOKED"}|${l.n} session${l.n > 1 ? "s" : ""} ${FORMEND ? "end on the demo-request form here" : "book here"}`;
+  } else if (l.kind === "exit") {
+    col = EXIT_C; op = (0.10 + Math.min(0.10, l.n / 60)).toFixed(2);
+    tip = `${esc(l.src.id)} → EXIT|${l.n} session${l.n > 1 ? "s" : ""} end here without booking`;
+  } else if (l.kind === "app") {
+    col = PCOL.dashboard; op = 0.30;
+    tip = l.src.col === 0
+      ? `app dashboard → app dashboard|${l.n} pure in-app session${l.n > 1 ? "s" : ""} — never touch marketing`
+      : `${esc(l.src.id)} → app dashboard|${l.n} session${l.n > 1 ? "s" : ""} hand the visitor to the product here`;
+  } else {
+    col = l.src.col === 0 ? "#8e93a6" : GCOL[nodeGroup(l.src.id)];
+    // emphasis: the core commercial lane is the booking story — the rest is soft mass
+    const story = l.src.col > 0 && nodeGroup(l.src.id) === "core";
+    op = ((story ? 0.26 : 0.12) + Math.min(story ? 0.3 : 0.16, l.n / 30)).toFixed(2);
+    tip = `${esc(l.src.id)} → ${esc(l.dst.id)}|${l.n} session${l.n > 1 ? "s" : ""}`;
+  }
+  // dashed = the journey continued past the last column; its fate is known, its
+  // middle isn't drawn. Dashing carries "incomplete path" honestly here (unlike
+  // on a gridline, where it only adds noise).
+  if (l.trunc) tip += ` · journey ran past step ${MAX}, middle not drawn`;
+  S.push(`<path class="flow" id="L${li}" d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}"
+    stroke="${col}" stroke-width="${w}" opacity="${op}"
+    ${l.trunc ? `stroke-dasharray="${Math.max(4, w * 1.2)} ${Math.max(3, w * 0.9)}"` : ""}
+    data-src="${l.src.col}|${esc(l.src.id)}" data-dst="${l.dst.col}|${esc(l.dst.id)}"
+    data-tip="${tip}"/>`);
+  // the per-step counts stay printed at the departure point — the stub labels' job
+  if (l.kind === "booked" && l.n >= (FORMEND ? 5 : 1)) // in the big dataset, label only the major green departures
+    S.push(`<text class="band" x="${x1 + 6}" y="${y1 - w / 2 - 5}" style="fill:${BOOKED_C}">${l.n} ${BOOK_VERB}</text>`);
+  li++;
+}
+
+// nodes + labels
+for (const list of cols) for (const n of list) {
+  const term = n.col === TERM;
+  const isOrigin = n.col === 0;
+  const special = isOrigin || n.id === "still browsing";
+  const col = n.id === "BOOKED" ? BOOKED_C : n.id === "EXIT" ? EXIT_C
+            : n.id === APP_ID ? PCOL.dashboard
+            : special ? "#b8bdcc" : GCOL[nodeGroup(n.id)];
+  const op = isOther(n.id) ? 0.45 : 1;
+  const gate = GATES.has(n.id);
+  const tip = term
+    ? `${esc(termLbl(n.id))}|${n.in} of ${sessions} sessions${
+        n.id === "BOOKED" ? (LAKE ? " end on the demo-request form — submission and booking are not observable at this grain" : ALL ? ` end on the demo-request form or hit its confirmation page (${SK.confirmed || 0} confirmed submissions; booking itself not observable)` : " — meeting scheduled (held-rate not measured)")
+        : n.id === "EXIT" ? (FORMEND ? " end elsewhere" : " end without booking")
+        : n.id === APP_ID ? " end in the product — handed off or living there"
+        : " are still going past step " + MAX}`
+    : isOrigin
+    ? (n.id === APP_ID
+        ? `${esc(n.id)}|${n.out} sessions start inside the product — returning users; some surface into marketing and book`
+        : LAKE
+        ? `${esc(n.id)}|${n.out} sessions whose first attributed source this session was ${esc(n.id)} — measured by the analytics platform, not self-reported`
+        : ALL
+        ? `${esc(n.id)}|${n.out} sessions arriving ${n.id === "untagged / direct" ? "with no campaign tag — direct, untagged organic, or untracked" : "tagged utm_source " + esc(n.id)}`
+        : `${esc(n.id)}|${n.out} sessions by visitors who said they heard about Retell via ${esc(n.id)} — self-reported, known to under-attribute`)
+    : `${esc(n.id)}|${Math.max(n.in, n.out)} sessions pass through (step ${n.col})`;
+  S.push(`<rect class="node" x="${n.x}" y="${n.y}" width="${NW}" height="${n.h}" rx="3"
+    fill="${col}" opacity="${op}" ${gate ? `stroke="${BOOKED_C}" stroke-width="1.6" stroke-dasharray="4 3"` : ""}
+    data-id="${n.col}|${esc(n.id)}"
+    data-tip="${tip}"/>`);
+  const lbl = term ? `${termLbl(n.id)} · ${n.in}` : isOrigin ? `${n.id} · ${n.out}`
+            : n.id.length > 26 ? n.id.slice(0, 25) + "…" : n.id;
+  if (n.h >= 7 || gate || special || term)
+    S.push(`<text ${term ? 'class="band"' : ""} x="${n.x + NW + 5}" y="${n.y + n.h / 2 + 3.5}"
+      ${term ? `style="fill:${n.id === "BOOKED" ? BOOKED_C : "#9aa0b0"}"` : ""}>${esc(lbl)}${gate ? " ⟡" : ""}</text>`);
+}
+S.push(`</svg>`);
+document.getElementById("wrap").innerHTML = S.join("\n");
+
+// legend: only groups actually on the chart
+{
+  const present = new Set([...nodes.values()]
+    .filter(n => !["BOOKED", "EXIT", "still browsing"].includes(n.id))
+    .filter(n => n.col > 0 || n.id === APP_ID)
+    .map(n => nodeGroup(n.id)));
+  if (present.has("other")) present.add("careers");
+  document.getElementById("legend").innerHTML = LEGEND
+    .filter(([g]) => present.has(g))
+    .map(([g, lbl]) => `<span><span class="dot" style="background:${GCOL[g]}"></span>${lbl}</span>`)
+    .join("")
+    // only claim the dashed convention if a truncated ribbon is actually drawn
+    + (links.some(l => l.trunc)
+        ? `<span><span style="display:inline-block;width:18px;border-top:2px dashed #8e93a6;`
+          + `vertical-align:3px;margin-right:5px"></span>ran past step ${MAX} (real outcome, middle undrawn)</span>`
+        : "");
+}
+
+function esc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;"); }
+function termLbl(id) { return id === "BOOKED" && FORMEND ? "REACHES FORM" : id; }
+
+/* ---------- hover ---------- */
+const tip = document.getElementById("tip");
+const svg = document.querySelector("svg");
+svg.addEventListener("mousemove", ev => {
+  const t = ev.target.closest("[data-tip]");
+  if (!t) { tip.style.display = "none"; dim(null); return; }
+  const [title, detail] = t.dataset.tip.split("|");
+  tip.style.display = "block";
+  tip.style.left = Math.min(innerWidth - 330, ev.clientX + 14) + "px";
+  tip.style.top = (ev.clientY + 14) + "px";
+  tip.innerHTML = `<div class="t">${title}</div><div class="d">${detail}</div>`;
+  dim(t);
+});
+svg.addEventListener("mouseleave", () => { tip.style.display = "none"; dim(null); });
+/* ---------- table-view twin ---------- */
+(() => {
+  const endAt = (c, id, kind) =>
+    links.filter(l => l.src.col === c && l.src.id === id && l.kind === kind)
+         .reduce((a, l) => a + l.n, 0);
+  let t1 = `<table><caption>Per step</caption><tr><th>step</th><th>sessions</th><th>book</th><th>to app</th><th>exit</th><th>continue</th></tr>`;
+  for (let c = 1; c <= MAX; c++) {
+    const list = cols[c];
+    const entering = list.reduce((a, n) => a + n.in, 0);
+    const bk = SK.ends.filter(e => e.c === c && e.end === "booked").reduce((a, e) => a + e.n, 0);
+    const ap = SK.ends.filter(e => e.c === c && e.end === "app").reduce((a, e) => a + e.n, 0);
+    const xt = SK.ends.filter(e => e.c === c && e.end === "exit").reduce((a, e) => a + e.n, 0);
+    t1 += `<tr><td>${c}</td><td>${entering}</td><td>${bk}</td><td>${ap}</td><td>${xt}</td><td>${entering - bk - ap - xt}</td></tr>`;
+  }
+  t1 += `</table>`;
+  let t2 = `<table><caption>Per page per step (sessions through)</caption><tr><th>step</th><th>page</th><th>in</th><th>book</th><th>to app</th><th>exit</th></tr>`;
+  for (let c = 1; c <= MAX; c++)
+    for (const n of cols[c])
+      t2 += `<tr><td>${c}</td><td>${esc(n.id)}</td><td>${n.in}</td><td>${endAt(c, n.id, "booked") || ""}</td><td>${endAt(c, n.id, "app") || ""}</td><td>${endAt(c, n.id, "exit") || ""}</td></tr>`;
+  t2 += `</table>`;
+  document.getElementById("tables").innerHTML = t1 + t2;
+})();
+
+function dim(active) {
+  const paths = svg.querySelectorAll("path.flow");
+  if (!active) { paths.forEach(p => p.style.opacity = ""); return; }
+  if (active.tagName === "path") {
+    paths.forEach(p => p.style.opacity = p === active ? 0.9 : 0.08);
+  } else if (active.tagName === "rect" && active.dataset.id) {
+    const id = active.dataset.id;
+    paths.forEach(p =>
+      p.style.opacity = (p.dataset.src === id || p.dataset.dst === id) ? 0.85 : 0.08);
+  }
+}
+} // end build()
+
+// every variant links to the other two, so no page is reachable only by URL
+if (LAKE) {
+  document.title = "Journey Funnel — all traffic, from the warehouse";
+  document.getElementById("h1").textContent = "Journey Funnel — All Traffic (warehouse)";
+  const sl = document.getElementById("siblink");
+  sl.href = "sankey.html"; sl.textContent = "← ICP funnel";
+  const s2 = document.getElementById("siblink2");
+  s2.href = "sankey-all.html"; s2.textContent = "← identified traffic";
+  document.getElementById("sub").innerHTML =
+    `<b>Every</b> marketing-site session in the analytics warehouse — not a sample, not an ` +
+    `identified subset — one column per step. ` +
+    `<b style="color:var(--booked)">Green</b> = the session ended on the demo-request form. ` +
+    `<b>Whether anyone submitted it, or booked, is not observable at this grain</b> (the ` +
+    `platform records a tiny fraction of real submissions on that page), so this chart ` +
+    `measures reach, not conversion — the <a href="sankey.html" style="color:var(--accent)">ICP ` +
+    `funnel</a> is where booking outcomes live. Origins are measured attribution, not ` +
+    `self-reported.`;
+  document.getElementById("foot").innerHTML =
+    `Aggregate only — page paths and session counts, reduced inside the warehouse; no ` +
+    `identifier is read or emitted. Marketing-site host only (the same property also ` +
+    `collects the product and auth subdomains, which are <b>over 90% of pageviews</b> — an ` +
+    `unfiltered version of this chart would be a product metric wearing a marketing label). ` +
+    `<code>/careers</code> and <code>/about-us</code> excluded: job-seeker traffic ` +
+    `over-indexes on large companies and pollutes buying-funnel numbers. Locale-prefixed ` +
+    `paths are normalised onto their canonical page, so the funnel doesn't fragment across ` +
+    `ten locales. The window starts when the raw-event export was first connected and ` +
+    `<b>cannot be backfilled</b>; it ends at the last fully-loaded day, so it trails ` +
+    `real time by a day or two. Regenerate with <code>build_data_lakehouse.py</code>.`;
+} else if (ALL) {
+  document.title = "Journey Funnel — all identified traffic";
+  document.getElementById("h1").textContent = "Journey Funnel — All Traffic";
+  const sl = document.getElementById("siblink");
+  sl.href = "sankey.html"; sl.textContent = "← ICP funnel";
+  const s2 = document.getElementById("siblink2");
+  s2.href = "sankey-lakehouse.html"; s2.textContent = "warehouse funnel →";
+  document.getElementById("sub").innerHTML =
+    `All <b>identified visitor sessions</b> on the marketing site, one column per step. ` +
+    `<b style="color:var(--booked)">Green</b> = observed form submission (confirmation ` +
+    `page reached) or session ending on the form — booking itself is not observable here. ` +
+    `*Origins from campaign tags; most traffic is untagged.`;
+  document.getElementById("foot").innerHTML =
+    `Anonymized aggregate — page paths and session counts only. Reverse-IP identification ` +
+    `covers a fraction of true traffic, biased toward identifiable companies; person-level ` +
+    `identity is neither trusted nor used. Export windows cap at 10k rows (totals ` +
+    `undercount); duplicate rows across re-exports dropped; page order as exported ` +
+    `(chronology assumed). <b>Handoffs into the app dashboard are not observable in this ` +
+    `data</b> — sessions that leave for the product count as EXIT; the ` +
+    `<a href="sankey.html" style="color:var(--accent)">ICP funnel</a>, which sees both ` +
+    `properties, measures that handoff. Full caveats in NOTES.md.`;
+} else {
+  const el = document.getElementById("elided");
+  if (el) el.textContent = SK.appHopsElided || 0;
+}
+build();
+</script>
+</body>
+</html>

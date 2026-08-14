@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Retell Website Visualizations</title>
+<style>
+  :root {
+    color-scheme: light;
+    --surface: #fcfcfb; --page: #f9f9f7; --ink-1: #0b0b0b; --ink-2: #52514e;
+    --muted: #898781; --border: rgba(11,11,11,0.10); --blue: #2a78d6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --surface: #1a1a19; --page: #0d0d0d; --ink-1: #ffffff; --ink-2: #c3c2b7;
+      --muted: #898781; --border: rgba(255,255,255,0.10); --blue: #3987e5;
+    }
+  }
+  [data-theme="dark"] {
+    color-scheme: dark;
+    --surface: #1a1a19; --page: #0d0d0d; --ink-1: #ffffff; --ink-2: #c3c2b7;
+    --muted: #898781; --border: rgba(255,255,255,0.10); --blue: #3987e5;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body { background: var(--page); color: var(--ink-1);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 40px clamp(16px, 4vw, 60px); }
+  main { max-width: 860px; margin: 0 auto; }
+  h1 { font-size: 24px; letter-spacing: -0.01em; }
+  .sub { color: var(--ink-2); margin: 6px 0 28px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 26px 0 10px; }
+  .cards { display: grid; gap: 10px; }
+  a.card { display: block; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px 18px; text-decoration: none; color: inherit; }
+  a.card:hover { border-color: var(--blue); }
+  a.card .t { font-weight: 650; color: var(--blue); }
+  a.card .d { color: var(--ink-2); font-size: 13.5px; margin-top: 3px; }
+  a.card .w { color: var(--muted); font-size: 12px; margin-top: 5px; }
+  footer { color: var(--muted); font-size: 12.5px; margin-top: 34px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Retell website visualizations</h1>
+  <div class="sub">Interactive views of how visitors move through the marketing site — where they come from, where they go, and what walks them toward a booked meeting. All data is anonymized aggregate: counts and rates only.</div>
+
+  <h2>Funnel overview</h2>
+  <div class="cards">
+    <a class="card" href="funnel-at-a-glance.html">
+      <div class="t">Funnel at a glance</div>
+      <div class="d">One page, five panels: the stage funnel, the one-page-visit cliff, which pages pull visitors toward the form, the channel-attribution gap, and what comes out the bottom.</div>
+      <div class="w">All-hands briefing · Aug 14 2026</div>
+    </a>
+  </div>
+
+  <h2>Journey funnels — step by step through a session</h2>
+  <div class="cards">
+    <a class="card" href="journey/sankey-lakehouse.html">
+      <div class="t">Warehouse funnel · 235k sessions</div>
+      <div class="d">Every marketing-site session from the analytics warehouse, step-indexed. The full picture at scale: 90% one-page sessions, 1.5% reach the form.</div>
+      <div class="w">Jul 19 – Aug 11 2026</div>
+    </a>
+    <a class="card" href="journey/sankey-all.html">
+      <div class="t">Identified-traffic funnel · 22.8k sessions</div>
+      <div class="d">Sessions from visitors whose company could be identified. Reaches the form at 2.4% — a measurably buyer-heavier slice than raw traffic.</div>
+      <div class="w">Jun 30 – Aug 10 2026</div>
+    </a>
+    <a class="card" href="journey/sankey.html">
+      <div class="t">ICP-lead funnel · 97 sessions</div>
+      <div class="d">Qualified leads only, with real booking outcomes: 42% of their marketing sessions end booked. Same site as the 235k view — the difference is the denominator.</div>
+      <div class="w">Jun 1 – Jul 20 2026</div>
+    </a>
+  </div>
+
+  <h2>Journey gravity graphs — where each page pulls</h2>
+  <div class="cards">
+    <a class="card" href="journey/index.html">
+      <div class="t">ICP journey gravity graph</div>
+      <div class="d">Absorbing Markov chain over real lead journeys: per page, the probability the visitor's story ends in a booked meeting. Two lenses that disagree — and the disagreement is the finding.</div>
+      <div class="w">53-lead cohort · booking outcomes</div>
+    </a>
+    <a class="card" href="journey/index-lakehouse.html">
+      <div class="t">Warehouse gravity graph</div>
+      <div class="d">The same model over 235k sessions: per page, the probability a session goes on to reach the sales form. Industry &amp; feature pages at 2–3× base; the blog near zero.</div>
+      <div class="w">235k sessions · form-reach outcome</div>
+    </a>
+  </div>
+
+  <footer>Counts and rates only — no identities, no emails, no per-visitor data. Each page states its own data window and caveats.</footer>
+</main>
+</body>
+</html>

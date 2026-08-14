@@ -1,0 +1,1215 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Journey Gravity — an absorbing Markov chain over real site journeys</title>
+<!--
+  Data: anonymized aggregate of ICP lead journeys across retellai.com properties.
+  No PII — page paths, transition counts and dwell sums only. Regenerate with:
+      python build_data.py
+  (source CSVs are private and NOT in this repo — see NOTES.md)
+-->
+<style>
+  :root {
+    --panel: rgba(18,20,27,.82);
+    --line: rgba(255,255,255,.11);
+    --text: #e6e8ef;
+    --dim: #8e93a6;
+    --muted: #898781;
+    --accent: #86b6ef;
+    /* validated dark-mode palette (surface #0b0d12) */
+    --www: #3987e5;       /* categorical slot 1 */
+    --dashboard: #d95926; /* categorical slot 2 */
+    --docs: #199e70;      /* categorical slot 3 */
+    --booked: #0ca30c;    /* status: good */
+    --lost: #d03b3b;      /* status: critical */
+    --div-hi: #3987e5;    /* diverging pole: above base */
+    --div-lo: #e66767;    /* diverging pole: below base */
+    --div-mid: #8a8a85;   /* diverging midpoint: neutral gray */
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; background: #0b0d12; }
+  body {
+    font: 13px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: var(--text); overflow: hidden;
+  }
+  canvas { display: block; width: 100vw; height: 100vh; cursor: grab; }
+  canvas.dragging { cursor: grabbing; }
+
+  #ui {
+    position: fixed; top: 14px; right: 14px; width: 292px;
+    max-height: calc(100vh - 28px); overflow-y: auto;
+    background: var(--panel); backdrop-filter: blur(14px);
+    border: 1px solid var(--line); border-radius: 12px;
+    padding: 12px 14px 14px;
+  }
+  #ui.collapsed .body { display: none; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  h1 { font-size: 12px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase;
+       margin: 0; color: var(--dim); }
+  #toggle { background: none; border: 1px solid var(--line); color: var(--dim); border-radius: 6px;
+            cursor: pointer; font-size: 11px; padding: 2px 7px; }
+  #toggle:hover { color: var(--text); }
+
+  .group { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+  .group:first-of-type { border-top: 0; margin-top: 10px; padding-top: 0; }
+  .glabel { font-size: 10px; letter-spacing: .09em; text-transform: uppercase; color: var(--dim);
+            margin-bottom: 8px; }
+
+  .row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px 8px;
+         margin-bottom: 9px; }
+  .row label { font-size: 12px; }
+  .row label[title] { cursor: help; border-bottom: 1px dotted rgba(255,255,255,.28); }
+  .row .val { font-variant-numeric: tabular-nums; font-size: 11px; color: var(--accent); }
+  .row input[type=range] { grid-column: 1 / -1; width: 100%; height: 3px; -webkit-appearance: none;
+                           appearance: none; background: rgba(255,255,255,.14); border-radius: 2px; }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px;
+    border-radius: 50%; background: var(--accent); cursor: pointer; }
+  input[type=range]::-moz-range-thumb { width: 12px; height: 12px; border: 0; border-radius: 50%;
+    background: var(--accent); cursor: pointer; }
+
+  .check { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; cursor: pointer;
+           font-size: 12px; }
+  .check input { accent-color: var(--accent); }
+
+  .btns { display: flex; flex-wrap: wrap; gap: 6px; }
+  button.act { flex: 1 1 auto; background: rgba(255,255,255,.06); border: 1px solid var(--line);
+               color: var(--text); border-radius: 7px; padding: 6px 8px; cursor: pointer;
+               font-size: 12px; }
+  button.act:hover { background: rgba(255,255,255,.13); }
+  button.act.on { background: var(--accent); border-color: var(--accent); color: #0b1626;
+                  font-weight: 600; }
+
+  .note { font-size: 11px; line-height: 1.4; color: var(--dim); margin-top: 7px; }
+
+  /* legend */
+  #legend .item { display: flex; align-items: center; gap: 7px; font-size: 11px; margin-bottom: 5px; }
+  #legend .sw { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto;
+                border: 1px solid rgba(255,255,255,.18); }
+  #legend .bar { height: 8px; border-radius: 4px; margin: 4px 0 3px; }
+  #legend .ends { display: flex; justify-content: space-between; font-size: 10px; color: var(--dim);
+                  font-variant-numeric: tabular-nums; }
+
+  /* ranked lists */
+  .rank { margin-top: 4px; }
+  .rank .r { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 3px 4px;
+             border-radius: 5px; cursor: pointer; font-size: 11px; align-items: baseline; }
+  .rank .r:hover { background: rgba(255,255,255,.07); }
+  .rank .r .p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rank .r .v { font-variant-numeric: tabular-nums; color: var(--dim); }
+  .rank .r.sel { background: rgba(134,182,239,.14); }
+
+  /* details panel */
+  #detail {
+    position: fixed; top: 14px; left: 14px; width: 316px; display: none;
+    background: var(--panel); backdrop-filter: blur(14px);
+    border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px 14px;
+    max-height: calc(100vh - 28px); overflow-y: auto;
+  }
+  #detail h2 { font-size: 13px; margin: 0 26px 2px 0; word-break: break-all; font-weight: 600; }
+  #detail .prop { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
+  #detail .close { position: absolute; top: 10px; right: 12px; background: none; border: 0;
+                   color: var(--dim); font-size: 14px; cursor: pointer; }
+  #detail .close:hover { color: var(--text); }
+  #detail table { width: 100%; border-collapse: collapse; margin-top: 9px; }
+  #detail td { padding: 2.5px 0; font-size: 11.5px; }
+  #detail td:last-child { text-align: right; font-variant-numeric: tabular-nums; color: var(--accent); }
+  #detail .sub { font-size: 10px; letter-spacing: .09em; text-transform: uppercase; color: var(--dim);
+                 margin: 12px 0 5px; padding-top: 10px; border-top: 1px solid var(--line); }
+  #detail .edge { display: grid; grid-template-columns: 1fr auto; gap: 8px; font-size: 11px;
+                  padding: 2.5px 0; align-items: baseline; }
+  #detail .edge .p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+  #detail .edge .p:hover { color: var(--accent); }
+  #detail .edge .n { font-variant-numeric: tabular-nums; color: var(--dim); }
+  #detail .ebar { height: 3px; border-radius: 2px; background: rgba(134,182,239,.55);
+                  grid-column: 1 / -1; margin: 0 0 2px; }
+
+  /* tooltip */
+  #tip { position: fixed; display: none; pointer-events: none; z-index: 10;
+         background: rgba(10,12,17,.94); border: 1px solid var(--line); border-radius: 8px;
+         padding: 7px 10px; font-size: 11px; max-width: 300px; }
+  #tip .t { font-weight: 600; word-break: break-all; margin-bottom: 3px; }
+  #tip .d { color: var(--dim); font-variant-numeric: tabular-nums; }
+
+  /* data table overlay */
+  #tableWrap { position: fixed; inset: 40px; display: none; z-index: 20;
+               background: rgba(10,12,17,.97); border: 1px solid var(--line); border-radius: 12px;
+               padding: 16px; overflow: auto; }
+  #tableWrap h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em;
+                  color: var(--dim); margin: 0 0 10px; }
+  #tableWrap .close { position: absolute; top: 12px; right: 16px; background: none; border: 0;
+                      color: var(--dim); font-size: 15px; cursor: pointer; }
+  #tableWrap table { border-collapse: collapse; width: 100%; font-size: 11.5px; }
+  #tableWrap th { text-align: right; font-weight: 600; color: var(--dim); padding: 4px 10px;
+                  border-bottom: 1px solid var(--line); position: sticky; top: -17px;
+                  background: rgba(10,12,17,.97); cursor: pointer; white-space: nowrap; }
+  #tableWrap th:first-child, #tableWrap td:first-child { text-align: left; }
+  #tableWrap td { padding: 3px 10px; font-variant-numeric: tabular-nums; text-align: right;
+                  border-bottom: 1px solid rgba(255,255,255,.05); }
+  #tableWrap td:first-child { word-break: break-all; }
+
+  #stats { position: fixed; left: 14px; bottom: 12px; font-size: 11px;
+           font-variant-numeric: tabular-nums; pointer-events: none;
+           color: rgba(255,255,255,.40); }
+</style>
+</head>
+<body>
+
+<canvas id="c"></canvas>
+<div id="stats"></div>
+<div id="tip"></div>
+
+<aside id="ui">
+  <header>
+    <h1 id="h1">Journey Gravity</h1>
+    <span style="display:flex;gap:6px">
+      <a href="index-lakehouse.html" id="siblink" style="font-size:11px;color:var(--dim);text-decoration:none;border:1px solid var(--line);border-radius:6px;padding:2px 7px" title="The same model over every warehouse session">warehouse</a>
+      <a href="sankey.html" style="font-size:11px;color:var(--dim);text-decoration:none;border:1px solid var(--line);border-radius:6px;padding:2px 7px" title="The same journeys as a step-by-step funnel">funnel</a>
+      <button id="toggle">hide</button>
+    </span>
+  </header>
+
+  <div class="body">
+    <div class="group">
+      <div class="glabel">Colour by</div>
+      <div class="btns" id="colorby"></div>
+      <div class="note" id="cbnote"></div>
+      <div id="legend" style="margin-top:9px"></div>
+    </div>
+
+    <div class="group">
+      <div class="glabel">Model</div>
+      <div class="btns" id="scopeBtns" style="margin-bottom:7px"></div>
+      <div class="note" id="scopenote" style="margin-bottom:10px"></div>
+      <div class="btns" id="modeBtns" style="margin-bottom:9px"></div>
+      <div class="note" id="modenote" style="margin-bottom:10px"></div>
+      <div class="row">
+        <label title="Pseudo-visits added to every page's outgoing counts, split by the base rate. 0 trusts tiny samples completely; higher values shrink low-traffic pages toward the base rate. Watch the ranking stabilise as you raise it.">Prior strength κ</label><span class="val" id="v_k"></span>
+        <input type="range" id="k" min="0" max="20" step="0.5">
+      </div>
+      <div class="note" id="modelnote"></div>
+    </div>
+
+    <div class="group">
+      <div class="glabel">Display</div>
+      <div class="row">
+        <label title="Hide edges with fewer transitions than this. Display only — the model always uses every edge.">Min edge count</label><span class="val" id="v_e"></span>
+        <input type="range" id="e" min="1" max="12" step="1">
+      </div>
+      <div class="row">
+        <label title="Ranked lists below ignore pages with fewer visits than this.">Min visits (lists)</label><span class="val" id="v_mv"></span>
+        <input type="range" id="mv" min="1" max="30" step="1">
+      </div>
+      <div class="row">
+        <label title="Pages with fewer visits than this fold into one dashed '(other …)' node per property, carrying their traffic with them. Display only — the model always uses every page.">Fold tail below</label><span class="val" id="v_mm"></span>
+        <input type="range" id="mm" min="1" max="20" step="1">
+      </div>
+      <label class="check"><input type="checkbox" id="fate" checked> fate layout
+        <span class="val" title="Pulls each page vertically toward its fate: high gravity floats up toward BOOKED, low sinks toward LOST. Height becomes meaning."></span></label>
+      <label class="check"><input type="checkbox" id="loops"> show self-loops
+        <span class="val" title="Reloads and repeat views. They never change where a walk ends — only how long it takes — so absorption probabilities ignore them by construction."></span></label>
+      <label class="check"><input type="checkbox" id="labels" checked> page labels</label>
+      <div class="btns" style="margin-top:6px">
+        <button class="act" id="tableBtn">data table</button>
+        <button class="act" id="reheat" title="Re-run the layout and release every pinned node">re-layout</button>
+      </div>
+      <div class="note">Drag a node to pin it where you drop it — a small white dot marks it pinned. Double-click releases one; re-layout releases all.</div>
+    </div>
+
+    <div class="group">
+      <div class="glabel" id="topLabel" title="P(walk ends in the absorbing state | you are on this page), under the fitted chain. Base rate marked ·">Highest pull toward booked</div>
+      <div class="rank" id="topRank"></div>
+    </div>
+
+    <div class="group">
+      <div class="glabel" id="lowLabel">Lowest pull</div>
+      <div class="rank" id="lowRank"></div>
+      <div class="note" id="lowNote"></div>
+    </div>
+
+    <div class="group">
+      <div class="glabel">Data</div>
+      <div class="note" id="datanote"></div>
+    </div>
+  </div>
+</aside>
+
+<div id="detail">
+  <button class="close" id="dclose">✕</button>
+  <div class="prop" id="dprop"></div>
+  <h2 id="dtitle"></h2>
+  <table id="dstats"></table>
+  <div id="dmeaning"></div>
+  <div class="sub">Where walks from here go next</div>
+  <div id="dedges"></div>
+</div>
+
+<div id="tableWrap">
+  <button class="close" id="tclose">✕</button>
+  <h2>All pages — click a header to sort</h2>
+  <table id="bigTable"></table>
+</div>
+
+<script>
+"use strict";
+const DATA = /*DATA-START*/{"meta":{"source":"ICP lead journeys, retellai.com properties (anonymized aggregate)","date_range":["2026-06-01","2026-07-20"],"visitors":53,"visitors_booked":43,"sessions":245,"pageviews":1199},"pages":[{"id":"dashboard.retellai.com/agents","prop":"dashboard","visits":188,"dwell":36803,"visitors":12,"visitsBooked":161,"visitsLost":27,"entries":75,"visitsWww":26},{"id":"dashboard.retellai.com/agents/:agent","prop":"dashboard","visits":143,"dwell":38905,"visitors":7,"visitsBooked":131,"visitsLost":12,"entries":21,"visitsWww":35},{"id":"dashboard.retellai.com/phoneNumbers","prop":"dashboard","visits":93,"dwell":20940,"visitors":10,"visitsBooked":83,"visitsLost":10,"entries":9,"visitsWww":25},{"id":"dashboard.retellai.com/call-history","prop":"dashboard","visits":93,"dwell":17651,"visitors":4,"visitsBooked":90,"visitsLost":3,"entries":24,"visitsWww":14},{"id":"/","prop":"www","visits":87,"dwell":12954,"visitors":38,"visitsBooked":66,"visitsLost":21,"entries":54,"visitsWww":87},{"id":"/enterprise-plan","prop":"www","visits":78,"dwell":8139,"visitors":53,"visitsBooked":65,"visitsLost":13,"entries":4,"visitsWww":78},{"id":"/pricing","prop":"www","visits":45,"dwell":5264,"visitors":24,"visitsBooked":37,"visitsLost":8,"entries":6,"visitsWww":45},{"id":"dashboard.retellai.com/billing","prop":"dashboard","visits":39,"dwell":4425,"visitors":5,"visitsBooked":30,"visitsLost":9,"entries":6,"visitsWww":4},{"id":"/changelog","prop":"www","visits":38,"dwell":758,"visitors":1,"visitsBooked":38,"visitsLost":0,"entries":3,"visitsWww":38},{"id":"dashboard.retellai.com/","prop":"dashboard","visits":31,"dwell":2732,"visitors":14,"visitsBooked":21,"visitsLost":10,"entries":6,"visitsWww":22},{"id":"dashboard.retellai.com/settings/workspace","prop":"dashboard","visits":18,"dwell":7905,"visitors":3,"visitsBooked":17,"visitsLost":1,"entries":3,"visitsWww":2},{"id":"docs.retellai.com/get-started/sdk","prop":"docs","visits":16,"dwell":1584,"visitors":1,"visitsBooked":16,"visitsLost":0,"entries":2,"visitsWww":10},{"id":"docs.retellai.com/reliability/debug-call-disconnect","prop":"docs","visits":15,"dwell":1806,"visitors":2,"visitsBooked":15,"visitsLost":0,"entries":3,"visitsWww":0},{"id":"dashboard.retellai.com/live-monitoring","prop":"dashboard","visits":15,"dwell":1821,"visitors":3,"visitsBooked":15,"visitsLost":0,"entries":1,"visitsWww":6},{"id":"docs.retellai.com/general/introduction","prop":"docs","visits":14,"dwell":440,"visitors":3,"visitsBooked":14,"visitsLost":0,"entries":1,"visitsWww":10},{"id":"dashboard.retellai.com/knowledgeBase","prop":"dashboard","visits":13,"dwell":2710,"visitors":5,"visitsBooked":12,"visitsLost":1,"entries":1,"visitsWww":5},{"id":"dashboard.retellai.com/analytics","prop":"dashboard","visits":12,"dwell":3452,"visitors":4,"visitsBooked":9,"visitsLost":3,"entries":2,"visitsWww":2},{"id":"/blogs","prop":"www","visits":12,"dwell":1302,"visitors":1,"visitsBooked":12,"visitsLost":0,"entries":0,"visitsWww":12},{"id":"docs.retellai.com/build/telephony/delete-service","prop":"docs","visits":8,"dwell":1634,"visitors":1,"visitsBooked":8,"visitsLost":0,"entries":0,"visitsWww":6},{"id":"docs.retellai.com/build/single-multi-prompt/transfer-agent","prop":"docs","visits":8,"dwell":238,"visitors":1,"visitsBooked":8,"visitsLost":0,"entries":0,"visitsWww":8},{"id":"docs.retellai.com/accounts/workspace","prop":"docs","visits":6,"dwell":2822,"visitors":1,"visitsBooked":6,"visitsLost":0,"entries":0,"visitsWww":4},{"id":"docs.retellai.com/build/platform-voices","prop":"docs","visits":6,"dwell":306,"visitors":1,"visitsBooked":6,"visitsLost":0,"entries":0,"visitsWww":6},{"id":"dashboard.retellai.com/settings/webhooks","prop":"dashboard","visits":5,"dwell":92,"visitors":2,"visitsBooked":5,"visitsLost":0,"entries":0,"visitsWww":0},{"id":"docs.retellai.com/api-references/overview","prop":"docs","visits":5,"dwell":56,"visitors":2,"visitsBooked":5,"visitsLost":0,"entries":1,"visitsWww":4},{"id":"/features/call-transfer","prop":"www","visits":5,"dwell":901,"visitors":4,"visitsBooked":5,"visitsLost":0,"entries":1,"visitsWww":5},{"id":"/integrations/ring-central","prop":"www","visits":5,"dwell":623,"visitors":2,"visitsBooked":5,"visitsLost":0,"entries":0,"visitsWww":5},{"id":"docs.retellai.com/deprecation-notice/2026/06-15_legacy_list_endpoints","prop":"docs","visits":4,"dwell":0,"visitors":1,"visitsBooked":4,"visitsLost":0,"entries":1,"visitsWww":0},{"id":"docs.retellai.com/features/live-monitoring","prop":"docs","visits":4,"dwell":264,"visitors":1,"visitsBooked":4,"visitsLost":0,"entries":0,"visitsWww":4},{"id":"docs.retellai.com/features/session-history","prop":"docs","visits":4,"dwell":44,"visitors":1,"visitsBooked":4,"visitsLost":0,"entries":0,"visitsWww":4},{"id":"/accounts/workspace","prop":"www","visits":4,"dwell":0,"visitors":1,"visitsBooked":4,"visitsLost":0,"entries":0,"visitsWww":4},{"id":"docs.retellai.com/build/telephony/call_efficiency_overview","prop":"docs","visits":4,"dwell":616,"visitors":1,"visitsBooked":4,"visitsLost":0,"entries":0,"visitsWww":2},{"id":"docs.retellai.com/integrations/crm-mappings","prop":"docs","visits":4,"dwell":2434,"visitors":1,"visitsBooked":4,"visitsLost":0,"entries":0,"visitsWww":2},{"id":"dashboard.retellai.com/integrations","prop":"dashboard","visits":4,"dwell":29,"visitors":2,"visitsBooked":4,"visitsLost":0,"entries":1,"visitsWww":2},{"id":"/get-started/sdk","prop":"www","visits":4,"dwell":2,"visitors":1,"visitsBooked":4,"visitsLost":0,"entries":1,"visitsWww":4},{"id":"docs.retellai.com/accounts/account","prop":"docs","visits":4,"dwell":38,"visitors":1,"visitsBooked":4,"visitsLost":0,"entries":1,"visitsWww":2},{"id":"/comparisons/retell-vs-elevenlabs","prop":"www","visits":4,"dwell":2088,"visitors":2,"visitsBooked":2,"visitsLost":2,"entries":1,"visitsWww":4},{"id":"/changelog/chatgpt-app-dynamic-voice-speed-a-b-testing-and-more","prop":"www","visits":4,"dwell":102,"visitors":1,"visitsBooked":4,"visitsLost":0,"entries":0,"visitsWww":4},{"id":"/changelog/agent-guardrails-webhook-testing-auto-failover-billing-transparency-more","prop":"www","visits":4,"dwell":54,"visitors":1,"visitsBooked":4,"visitsLost":0,"entries":0,"visitsWww":4},{"id":"/changelog/ai-qa-analyst-custom-alert-notifications-node-search-and-everything-else-from-this-month","prop":"www","visits":4,"dwell":36,"visitors":1,"visitsBooked":4,"visitsLost":0,"entries":0,"visitsWww":4},{"id":"dashboard.retellai.com/contacts","prop":"dashboard","visits":4,"dwell":34,"visitors":1,"visitsBooked":4,"visitsLost":0,"entries":0,"visitsWww":0},{"id":"docs.retellai.com/deprecation-notice/overview","prop":"docs","visits":4,"dwell":162,"visitors":1,"visitsBooked":4,"visitsLost":0,"entries":0,"visitsWww":4},{"id":"docs.retellai.com/accounts/billing-exceptions","prop":"docs","visits":4,"dwell":1740,"visitors":1,"visitsBooked":4,"visitsLost":0,"entries":1,"visitsWww":2},{"id":"/industry/retail-consumer-goods","prop":"www","visits":4,"dwell":1150,"visitors":1,"visitsBooked":4,"visitsLost":0,"entries":0,"visitsWww":4},{"id":"/about-us","prop":"www","visits":3,"dwell":141,"visitors":3,"visitsBooked":2,"visitsLost":1,"entries":0,"visitsWww":3},{"id":"/industry/insurance","prop":"www","visits":3,"dwell":40,"visitors":2,"visitsBooked":3,"visitsLost":0,"entries":0,"visitsWww":3},{"id":"docs.retellai.com/general/compliance","prop":"docs","visits":3,"dwell":442,"visitors":2,"visitsBooked":2,"visitsLost":1,"entries":1,"visitsWww":2},{"id":"/industry/healthcare-industry","prop":"www","visits":3,"dwell":844,"visitors":1,"visitsBooked":3,"visitsLost":0,"entries":0,"visitsWww":3},{"id":"/integrations","prop":"www","visits":3,"dwell":24,"visitors":2,"visitsBooked":3,"visitsLost":0,"entries":1,"visitsWww":3},{"id":"/use-cases/customer-support","prop":"www","visits":3,"dwell":185,"visitors":2,"visitsBooked":3,"visitsLost":0,"entries":0,"visitsWww":3},{"id":"/features/navigate-ivr","prop":"www","visits":3,"dwell":70,"visitors":1,"visitsBooked":3,"visitsLost":0,"entries":0,"visitsWww":3},{"id":"docs.retellai.com/build/agent-handbook","prop":"docs","visits":2,"dwell":14,"visitors":1,"visitsBooked":2,"visitsLost":0,"entries":0,"visitsWww":2},{"id":"docs.retellai.com/build/knowledge-base","prop":"docs","visits":2,"dwell":4,"visitors":1,"visitsBooked":2,"visitsLost":0,"entries":0,"visitsWww":2},{"id":"/build/dynamic-variables","prop":"www","visits":2,"dwell":0,"visitors":1,"visitsBooked":2,"visitsLost":0,"entries":0,"visitsWww":2},{"id":"docs.retellai.com/build/dynamic-variables","prop":"docs","visits":2,"dwell":34,"visitors":1,"visitsBooked":2,"visitsLost":0,"entries":0,"visitsWww":2},{"id":"/features/live-monitoring","prop":"www","visits":2,"dwell":2,"visitors":1,"visitsBooked":2,"visitsLost":0,"entries":0,"visitsWww":2},{"id":"/features/session-history","prop":"www","visits":2,"dwell":0,"visitors":1,"visitsBooked":2,"visitsLost":0,"entries":0,"visitsWww":2},{"id":"/features/analytics-dashboard","prop":"www","visits":2,"dwell":0,"visitors":1,"visitsBooked":2,"visitsLost":0,"entries":0,"visitsWww":2},{"id":"docs.retellai.com/features/analytics-dashboard","prop":"docs","visits":2,"dwell":10,"visitors":1,"visitsBooked":2,"visitsLost":0,"entries":0,"visitsWww":2},{"id":"docs.retellai.com/ai-qa/overview","prop":"docs","visits":2,"dwell":12,"visitors":1,"visitsBooked":2,"visitsLost":0,"entries":0,"visitsWww":2},{"id":"docs.retellai.com/reliability/wrong-transcript","prop":"docs","visits":2,"dwell":8,"visitors":1,"visitsBooked":2,"visitsLost":0,"entries":0,"visitsWww":2},{"id":"docs.retellai.com/reliability/call-performance","prop":"docs","visits":2,"dwell":10,"visitors":1,"visitsBooked":2,"visitsLost":0,"entries":0,"visitsWww":2},{"id":"/reliability/debug-calls-pcap","prop":"www","visits":2,"dwell":0,"visitors":1,"visitsBooked":2,"visitsLost":0,"entries":0,"visitsWww":2},{"id":"docs.retellai.com/reliability/debug-calls-pcap","prop":"docs","visits":2,"dwell":34,"visitors":1,"visitsBooked":2,"visitsLost":0,"entries":0,"visitsWww":2},{"id":"/reliability/fraud-protection","prop":"www","visits":2,"dwell":2,"visitors":1,"visitsBooked":2,"visitsLost":0,"entries":0,"visitsWww":2},{"id":"docs.retellai.com/reliability/fraud-protection","prop":"docs","visits":2,"dwell":122,"visitors":1,"visitsBooked":2,"visitsLost":0,"entries":0,"visitsWww":2},{"id":"docs.retellai.com/build/no-response","prop":"docs","visits":2,"dwell":1848,"visitors":1,"visitsBooked":2,"visitsLost":0,"entries":0,"visitsWww":0},{"id":"dashboard.retellai.com/settings/api-keys","prop":"dashboard","visits":2,"dwell":0,"visitors":1,"visitsBooked":2,"visitsLost":0,"entries":0,"visitsWww":0},{"id":"docs.retellai.com/build/telephony/verified-phone","prop":"docs","visits":2,"dwell":102,"visitors":1,"visitsBooked":2,"visitsLost":0,"entries":0,"visitsWww":2},{"id":"/build/telephony/delete-service","prop":"www","visits":2,"dwell":0,"visitors":1,"visitsBooked":2,"visitsLost":0,"entries":0,"visitsWww":2},{"id":"/changelog/agent-versioning-2-0-granular-multilingual-custom-voicemail-voice-orb-and-more","prop":"www","visits":2,"dwell":4,"visitors":1,"visitsBooked":2,"visitsLost":0,"entries":0,"visitsWww":2},{"id":"/build/tts-provider-comparison","prop":"www","visits":2,"dwell":0,"visitors":1,"visitsBooked":2,"visitsLost":0,"entries":0,"visitsWww":2},{"id":"docs.retellai.com/build/tts-provider-comparison","prop":"docs","visits":2,"dwell":124,"visitors":1,"visitsBooked":2,"visitsLost":0,"entries":0,"visitsWww":2},{"id":"/accounts/account","prop":"www","visits":2,"dwell":0,"visitors":1,"visitsBooked":2,"visitsLost":0,"entries":0,"visitsWww":2},{"id":"/blog/asr-llm-fallbacks","prop":"www","visits":2,"dwell":408,"visitors":1,"visitsBooked":2,"visitsLost":0,"entries":0,"visitsWww":2},{"id":"/blog/ios-call-screening","prop":"www","visits":2,"dwell":1124,"visitors":1,"visitsBooked":2,"visitsLost":0,"entries":0,"visitsWww":2},{"id":"/build/platform-voices","prop":"www","visits":2,"dwell":22,"visitors":1,"visitsBooked":2,"visitsLost":0,"entries":0,"visitsWww":2},{"id":"/changelog/flex-mode-advanced-warm-transfer-60-languages-and-more","prop":"www","visits":2,"dwell":30,"visitors":1,"visitsBooked":2,"visitsLost":0,"entries":0,"visitsWww":2},{"id":"/blog/vcx-hard-benchmark","prop":"www","visits":2,"dwell":134,"visitors":1,"visitsBooked":2,"visitsLost":0,"entries":0,"visitsWww":2},{"id":"/changelog/cf-components-warm-transfer-caller-id-call-history-more","prop":"www","visits":2,"dwell":48,"visitors":1,"visitsBooked":2,"visitsLost":0,"entries":0,"visitsWww":2},{"id":"/changelog/node-kb-role-based-access-outbound-sms-api-more","prop":"www","visits":2,"dwell":42,"visitors":1,"visitsBooked":2,"visitsLost":0,"entries":0,"visitsWww":2},{"id":"/blog/retell-asr","prop":"www","visits":2,"dwell":62,"visitors":1,"visitsBooked":2,"visitsLost":0,"entries":0,"visitsWww":2},{"id":"/blog/retell-ai-recognized-as-the-best-agentic-ai-software-by-g2","prop":"www","visits":2,"dwell":18,"visitors":1,"visitsBooked":2,"visitsLost":0,"entries":0,"visitsWww":2},{"id":"docs.retellai.com/api-references/list-retell-llms","prop":"docs","visits":2,"dwell":22,"visitors":1,"visitsBooked":2,"visitsLost":0,"entries":0,"visitsWww":0},{"id":"docs.retellai.com/api-references/import-phone-number","prop":"docs","visits":2,"dwell":1102,"visitors":1,"visitsBooked":2,"visitsLost":0,"entries":0,"visitsWww":0},{"id":"docs.retellai.com/api-references/create-phone-call","prop":"docs","visits":2,"dwell":80,"visitors":1,"visitsBooked":2,"visitsLost":0,"entries":0,"visitsWww":2},{"id":"/build/single-multi-prompt/transfer-agent","prop":"www","visits":2,"dwell":0,"visitors":1,"visitsBooked":2,"visitsLost":0,"entries":0,"visitsWww":2},{"id":"docs.retellai.com/build/single-multi-prompt/transfer-call","prop":"docs","visits":2,"dwell":0,"visitors":1,"visitsBooked":2,"visitsLost":0,"entries":0,"visitsWww":2},{"id":"/partners-program","prop":"www","visits":2,"dwell":92,"visitors":1,"visitsBooked":2,"visitsLost":0,"entries":0,"visitsWww":2},{"id":"/features/knowledge-base","prop":"www","visits":2,"dwell":178,"visitors":2,"visitsBooked":2,"visitsLost":0,"entries":0,"visitsWww":2},{"id":"dashboard.retellai.com/batchCall","prop":"dashboard","visits":2,"dwell":0,"visitors":1,"visitsBooked":2,"visitsLost":0,"entries":1,"visitsWww":0},{"id":"/integrations/epic","prop":"www","visits":2,"dwell":149,"visitors":1,"visitsBooked":2,"visitsLost":0,"entries":0,"visitsWww":2},{"id":"/features/batch-call","prop":"www","visits":2,"dwell":54,"visitors":2,"visitsBooked":2,"visitsLost":0,"entries":0,"visitsWww":2},{"id":"/ai-customer-service","prop":"www","visits":2,"dwell":183,"visitors":1,"visitsBooked":2,"visitsLost":0,"entries":0,"visitsWww":2},{"id":"/es","prop":"www","visits":2,"dwell":23,"visitors":2,"visitsBooked":2,"visitsLost":0,"entries":2,"visitsWww":2},{"id":"/es/plan-enterprise","prop":"www","visits":2,"dwell":367,"visitors":2,"visitsBooked":2,"visitsLost":0,"entries":0,"visitsWww":2},{"id":"/blog/best-ai-tools-real-estate-agents","prop":"www","visits":1,"dwell":32,"visitors":1,"visitsBooked":1,"visitsLost":0,"entries":1,"visitsWww":1},{"id":"/blog/vapi-vs-bland","prop":"www","visits":1,"dwell":2,"visitors":1,"visitsBooked":1,"visitsLost":0,"entries":1,"visitsWww":1},{"id":"/comparisons/retell-vs-synthflow","prop":"www","visits":1,"dwell":0,"visitors":1,"visitsBooked":1,"visitsLost":0,"entries":1,"visitsWww":1},{"id":"/blog/retell-vs-vapi","prop":"www","visits":1,"dwell":128,"visitors":1,"visitsBooked":1,"visitsLost":0,"entries":1,"visitsWww":1},{"id":"/build/conversation-flow/sms-node","prop":"www","visits":1,"dwell":1,"visitors":1,"visitsBooked":1,"visitsLost":0,"entries":0,"visitsWww":1},{"id":"docs.retellai.com/build/conversation-flow/sms-node","prop":"docs","visits":1,"dwell":93,"visitors":1,"visitsBooked":1,"visitsLost":0,"entries":0,"visitsWww":1},{"id":"docs.retellai.com/deploy/enable-sms","prop":"docs","visits":1,"dwell":367,"visitors":1,"visitsBooked":1,"visitsLost":0,"entries":0,"visitsWww":1},{"id":"dashboard.retellai.com/settings/limits","prop":"dashboard","visits":1,"dwell":7,"visitors":1,"visitsBooked":1,"visitsLost":0,"entries":1,"visitsWww":0},{"id":"dashboard.retellai.com/quality-assurance","prop":"dashboard","visits":1,"dwell":0,"visitors":1,"visitsBooked":1,"visitsLost":0,"entries":0,"visitsWww":0},{"id":"/blog/automating-prescription-refills","prop":"www","visits":1,"dwell":80,"visitors":1,"visitsBooked":1,"visitsLost":0,"entries":1,"visitsWww":1},{"id":"docs.retellai.com/integrations/salesforce","prop":"docs","visits":1,"dwell":52,"visitors":1,"visitsBooked":0,"visitsLost":1,"entries":1,"visitsWww":0},{"id":"docs.retellai.com/build/single-multi-prompt/mcp","prop":"docs","visits":1,"dwell":0,"visitors":1,"visitsBooked":0,"visitsLost":1,"entries":0,"visitsWww":0},{"id":"/blog/ai-cold-calling","prop":"www","visits":1,"dwell":301,"visitors":1,"visitsBooked":1,"visitsLost":0,"entries":1,"visitsWww":1},{"id":"/features/branded-call-id","prop":"www","visits":1,"dwell":11,"visitors":1,"visitsBooked":1,"visitsLost":0,"entries":0,"visitsWww":1},{"id":"/features/verified-phone-numbers","prop":"www","visits":1,"dwell":4,"visitors":1,"visitsBooked":1,"visitsLost":0,"entries":0,"visitsWww":1},{"id":"/use-cases/receptionists","prop":"www","visits":1,"dwell":870,"visitors":1,"visitsBooked":1,"visitsLost":0,"entries":0,"visitsWww":1},{"id":"/industry/financial-services","prop":"www","visits":1,"dwell":0,"visitors":1,"visitsBooked":1,"visitsLost":0,"entries":0,"visitsWww":1},{"id":"/blog/best-ai-voice-platforms-virtual-receptionists","prop":"www","visits":1,"dwell":387,"visitors":1,"visitsBooked":1,"visitsLost":0,"entries":1,"visitsWww":1},{"id":"dashboard.retellai.com/persona-redirect","prop":"dashboard","visits":1,"dwell":7,"visitors":1,"visitsBooked":0,"visitsLost":1,"entries":0,"visitsWww":0},{"id":"/industry/logistics","prop":"www","visits":1,"dwell":87,"visitors":1,"visitsBooked":1,"visitsLost":0,"entries":0,"visitsWww":1},{"id":"docs.retellai.com/general/support","prop":"docs","visits":1,"dwell":8,"visitors":1,"visitsBooked":1,"visitsLost":0,"entries":1,"visitsWww":1},{"id":"/blog/retell-vs-polyai-compare-ai-voice-app-builder","prop":"www","visits":1,"dwell":2,"visitors":1,"visitsBooked":1,"visitsLost":0,"entries":1,"visitsWww":1}],"edges":[{"from":"__START__","to":"dashboard.retellai.com/agents","n":75},{"from":"__START__","to":"/","n":54},{"from":"dashboard.retellai.com/agents","to":"dashboard.retellai.com/agents","n":50},{"from":"dashboard.retellai.com/agents/:agent","to":"dashboard.retellai.com/agents/:agent","n":50},{"from":"/enterprise-plan","to":"__BOOKED__","n":41},{"from":"dashboard.retellai.com/call-history","to":"dashboard.retellai.com/call-history","n":40},{"from":"dashboard.retellai.com/agents","to":"dashboard.retellai.com/agents/:agent","n":32},{"from":"/","to":"/enterprise-plan","n":31},{"from":"dashboard.retellai.com/agents","to":"__BOOKED__","n":29},{"from":"dashboard.retellai.com/agents/:agent","to":"__BOOKED__","n":26},{"from":"dashboard.retellai.com/agents","to":"dashboard.retellai.com/phoneNumbers","n":25},{"from":"dashboard.retellai.com/agents/:agent","to":"dashboard.retellai.com/agents","n":25},{"from":"__START__","to":"dashboard.retellai.com/call-history","n":24},{"from":"dashboard.retellai.com/call-history","to":"__BOOKED__","n":22},{"from":"dashboard.retellai.com/agents/:agent","to":"dashboard.retellai.com/phoneNumbers","n":22},{"from":"__START__","to":"dashboard.retellai.com/agents/:agent","n":21},{"from":"dashboard.retellai.com/phoneNumbers","to":"dashboard.retellai.com/agents/:agent","n":20},{"from":"dashboard.retellai.com/phoneNumbers","to":"__BOOKED__","n":19},{"from":"/","to":"/pricing","n":18},{"from":"/pricing","to":"/enterprise-plan","n":18},{"from":"/changelog","to":"/changelog","n":18},{"from":"dashboard.retellai.com/phoneNumbers","to":"dashboard.retellai.com/phoneNumbers","n":17},{"from":"/","to":"dashboard.retellai.com/","n":13},{"from":"dashboard.retellai.com/agents","to":"__LOST__","n":13},{"from":"dashboard.retellai.com/","to":"dashboard.retellai.com/agents","n":12},{"from":"dashboard.retellai.com/billing","to":"dashboard.retellai.com/billing","n":12},{"from":"dashboard.retellai.com/agents","to":"dashboard.retellai.com/call-history","n":11},{"from":"dashboard.retellai.com/agents","to":"dashboard.retellai.com/billing","n":10},{"from":"/","to":"__BOOKED__","n":10},{"from":"__START__","to":"dashboard.retellai.com/phoneNumbers","n":9},{"from":"dashboard.retellai.com/settings/workspace","to":"dashboard.retellai.com/settings/workspace","n":8},{"from":"/enterprise-plan","to":"__LOST__","n":8},{"from":"/enterprise-plan","to":"/pricing","n":7},{"from":"/enterprise-plan","to":"/","n":7},{"from":"/","to":"__LOST__","n":7},{"from":"docs.retellai.com/reliability/debug-call-disconnect","to":"docs.retellai.com/reliability/debug-call-disconnect","n":7},{"from":"dashboard.retellai.com/phoneNumbers","to":"__LOST__","n":7},{"from":"dashboard.retellai.com/billing","to":"__LOST__","n":7},{"from":"/pricing","to":"/","n":6},{"from":"__START__","to":"/pricing","n":6},{"from":"dashboard.retellai.com/live-monitoring","to":"dashboard.retellai.com/live-monitoring","n":6},{"from":"docs.retellai.com/general/introduction","to":"docs.retellai.com/general/introduction","n":6},{"from":"docs.retellai.com/get-started/sdk","to":"docs.retellai.com/get-started/sdk","n":6},{"from":"/blogs","to":"/blogs","n":6},{"from":"dashboard.retellai.com/call-history","to":"dashboard.retellai.com/agents","n":6},{"from":"__START__","to":"dashboard.retellai.com/","n":6},{"from":"dashboard.retellai.com/agents/:agent","to":"dashboard.retellai.com/knowledgeBase","n":6},{"from":"dashboard.retellai.com/phoneNumbers","to":"dashboard.retellai.com/agents","n":6},{"from":"__START__","to":"dashboard.retellai.com/billing","n":6},{"from":"dashboard.retellai.com/billing","to":"__BOOKED__","n":5},{"from":"dashboard.retellai.com/agents/:agent","to":"__LOST__","n":5},{"from":"dashboard.retellai.com/","to":"__LOST__","n":5},{"from":"dashboard.retellai.com/call-history","to":"dashboard.retellai.com/agents/:agent","n":4},{"from":"/accounts/workspace","to":"docs.retellai.com/accounts/workspace","n":4},{"from":"dashboard.retellai.com/agents","to":"dashboard.retellai.com/settings/workspace","n":4},{"from":"dashboard.retellai.com/call-history","to":"docs.retellai.com/reliability/debug-call-disconnect","n":4},{"from":"dashboard.retellai.com/billing","to":"dashboard.retellai.com/phoneNumbers","n":4},{"from":"__START__","to":"/enterprise-plan","n":4},{"from":"dashboard.retellai.com/knowledgeBase","to":"dashboard.retellai.com/agents/:agent","n":4},{"from":"dashboard.retellai.com/knowledgeBase","to":"dashboard.retellai.com/phoneNumbers","n":4},{"from":"dashboard.retellai.com/","to":"/","n":4},{"from":"dashboard.retellai.com/phoneNumbers","to":"dashboard.retellai.com/knowledgeBase","n":3},{"from":"dashboard.retellai.com/knowledgeBase","to":"__BOOKED__","n":3},{"from":"/pricing","to":"__LOST__","n":3},{"from":"__START__","to":"docs.retellai.com/reliability/debug-call-disconnect","n":3},{"from":"dashboard.retellai.com/billing","to":"dashboard.retellai.com/agents/:agent","n":3},{"from":"__START__","to":"dashboard.retellai.com/settings/workspace","n":3},{"from":"docs.retellai.com/reliability/debug-call-disconnect","to":"dashboard.retellai.com/call-history","n":3},{"from":"/get-started/sdk","to":"docs.retellai.com/get-started/sdk","n":3},{"from":"docs.retellai.com/get-started/sdk","to":"/changelog","n":3},{"from":"dashboard.retellai.com/phoneNumbers","to":"dashboard.retellai.com/billing","n":3},{"from":"docs.retellai.com/build/telephony/delete-service","to":"docs.retellai.com/build/telephony/delete-service","n":3},{"from":"__START__","to":"/changelog","n":3},{"from":"docs.retellai.com/build/platform-voices","to":"docs.retellai.com/build/platform-voices","n":3},{"from":"/pricing","to":"/pricing","n":3},{"from":"docs.retellai.com/build/single-multi-prompt/transfer-agent","to":"docs.retellai.com/build/single-multi-prompt/transfer-agent","n":3},{"from":"dashboard.retellai.com/phoneNumbers","to":"dashboard.retellai.com/call-history","n":3},{"from":"dashboard.retellai.com/call-history","to":"dashboard.retellai.com/phoneNumbers","n":3},{"from":"/pricing","to":"/features/call-transfer","n":3},{"from":"dashboard.retellai.com/agents","to":"dashboard.retellai.com/knowledgeBase","n":3},{"from":"dashboard.retellai.com/analytics","to":"dashboard.retellai.com/phoneNumbers","n":3},{"from":"/pricing","to":"__BOOKED__","n":3},{"from":"dashboard.retellai.com/agents","to":"/","n":3},{"from":"/pricing","to":"/industry/retail-consumer-goods","n":3},{"from":"dashboard.retellai.com/phoneNumbers","to":"/integrations/ring-central","n":3},{"from":"dashboard.retellai.com/phoneNumbers","to":"dashboard.retellai.com/analytics","n":3},{"from":"/enterprise-plan","to":"/about-us","n":2},{"from":"/industry/insurance","to":"/enterprise-plan","n":2},{"from":"/enterprise-plan","to":"/industry/insurance","n":2},{"from":"/about-us","to":"/","n":2},{"from":"docs.retellai.com/reliability/debug-call-disconnect","to":"dashboard.retellai.com/agents/:agent","n":2},{"from":"dashboard.retellai.com/billing","to":"dashboard.retellai.com/agents","n":2},{"from":"dashboard.retellai.com/live-monitoring","to":"dashboard.retellai.com/analytics","n":2},{"from":"dashboard.retellai.com/analytics","to":"dashboard.retellai.com/analytics","n":2},{"from":"docs.retellai.com/deprecation-notice/2026/06-15_legacy_list_endpoints","to":"docs.retellai.com/deprecation-notice/2026/06-15_legacy_list_endpoints","n":2},{"from":"docs.retellai.com/deprecation-notice/2026/06-15_legacy_list_endpoints","to":"__BOOKED__","n":2},{"from":"docs.retellai.com/features/live-monitoring","to":"docs.retellai.com/features/live-monitoring","n":2},{"from":"/build/dynamic-variables","to":"docs.retellai.com/build/dynamic-variables","n":2},{"from":"/features/session-history","to":"docs.retellai.com/features/session-history","n":2},{"from":"/features/analytics-dashboard","to":"docs.retellai.com/features/analytics-dashboard","n":2},{"from":"/reliability/debug-calls-pcap","to":"docs.retellai.com/reliability/debug-calls-pcap","n":2},{"from":"docs.retellai.com/accounts/workspace","to":"/accounts/workspace","n":2},{"from":"__START__","to":"docs.retellai.com/get-started/sdk","n":2},{"from":"docs.retellai.com/build/telephony/call_efficiency_overview","to":"docs.retellai.com/build/telephony/call_efficiency_overview","n":2},{"from":"dashboard.retellai.com/settings/workspace","to":"__BOOKED__","n":2},{"from":"docs.retellai.com/reliability/debug-call-disconnect","to":"__BOOKED__","n":2},{"from":"dashboard.retellai.com/live-monitoring","to":"dashboard.retellai.com/call-history","n":2},{"from":"dashboard.retellai.com/settings/webhooks","to":"dashboard.retellai.com/settings/webhooks","n":2},{"from":"dashboard.retellai.com/call-history","to":"docs.retellai.com/general/introduction","n":2},{"from":"docs.retellai.com/integrations/crm-mappings","to":"docs.retellai.com/integrations/crm-mappings","n":2},{"from":"dashboard.retellai.com/live-monitoring","to":"__BOOKED__","n":2},{"from":"/build/telephony/delete-service","to":"docs.retellai.com/build/telephony/delete-service","n":2},{"from":"dashboard.retellai.com/billing","to":"dashboard.retellai.com/live-monitoring","n":2},{"from":"docs.retellai.com/build/telephony/delete-service","to":"docs.retellai.com/get-started/sdk","n":2},{"from":"/build/tts-provider-comparison","to":"docs.retellai.com/build/tts-provider-comparison","n":2},{"from":"/accounts/account","to":"docs.retellai.com/accounts/account","n":2},{"from":"/changelog","to":"/changelog/chatgpt-app-dynamic-voice-speed-a-b-testing-and-more","n":2},{"from":"/changelog/chatgpt-app-dynamic-voice-speed-a-b-testing-and-more","to":"/changelog/chatgpt-app-dynamic-voice-speed-a-b-testing-and-more","n":2},{"from":"/changelog/chatgpt-app-dynamic-voice-speed-a-b-testing-and-more","to":"/changelog","n":2},{"from":"/changelog","to":"/blogs","n":2},{"from":"/changelog","to":"/changelog/agent-guardrails-webhook-testing-auto-failover-billing-transparency-more","n":2},{"from":"/changelog/agent-guardrails-webhook-testing-auto-failover-billing-transparency-more","to":"/changelog/agent-guardrails-webhook-testing-auto-failover-billing-transparency-more","n":2},{"from":"/changelog/agent-guardrails-webhook-testing-auto-failover-billing-transparency-more","to":"/changelog","n":2},{"from":"/changelog","to":"/changelog/ai-qa-analyst-custom-alert-notifications-node-search-and-everything-else-from-this-month","n":2},{"from":"/changelog/ai-qa-analyst-custom-alert-notifications-node-search-and-everything-else-from-this-month","to":"/changelog/ai-qa-analyst-custom-alert-notifications-node-search-and-everything-else-from-this-month","n":2},{"from":"/changelog/ai-qa-analyst-custom-alert-notifications-node-search-and-everything-else-from-this-month","to":"/changelog","n":2},{"from":"dashboard.retellai.com/call-history","to":"dashboard.retellai.com/contacts","n":2},{"from":"dashboard.retellai.com/contacts","to":"dashboard.retellai.com/contacts","n":2},{"from":"dashboard.retellai.com/contacts","to":"dashboard.retellai.com/call-history","n":2},{"from":"docs.retellai.com/deprecation-notice/overview","to":"docs.retellai.com/deprecation-notice/overview","n":2},{"from":"/changelog","to":"__BOOKED__","n":2},{"from":"docs.retellai.com/build/single-multi-prompt/transfer-agent","to":"docs.retellai.com/api-references/overview","n":2},{"from":"docs.retellai.com/api-references/overview","to":"docs.retellai.com/api-references/overview","n":2},{"from":"/build/single-multi-prompt/transfer-agent","to":"docs.retellai.com/build/single-multi-prompt/transfer-agent","n":2},{"from":"dashboard.retellai.com/settings/workspace","to":"dashboard.retellai.com/","n":2},{"from":"docs.retellai.com/accounts/billing-exceptions","to":"docs.retellai.com/accounts/billing-exceptions","n":2},{"from":"docs.retellai.com/accounts/billing-exceptions","to":"dashboard.retellai.com/agents","n":2},{"from":"dashboard.retellai.com/agents/:agent","to":"dashboard.retellai.com/call-history","n":2},{"from":"/","to":"/","n":2},{"from":"/enterprise-plan","to":"/enterprise-plan","n":2},{"from":"dashboard.retellai.com/agents","to":"/enterprise-plan","n":2},{"from":"dashboard.retellai.com/batchCall","to":"__BOOKED__","n":2},{"from":"/","to":"/industry/healthcare-industry","n":2},{"from":"dashboard.retellai.com/call-history","to":"__LOST__","n":2},{"from":"dashboard.retellai.com/phoneNumbers","to":"/pricing","n":2},{"from":"/enterprise-plan","to":"dashboard.retellai.com/","n":2},{"from":"/use-cases/customer-support","to":"/enterprise-plan","n":2},{"from":"__START__","to":"/es","n":2},{"from":"/es","to":"/es/plan-enterprise","n":2},{"from":"/es/plan-enterprise","to":"/enterprise-plan","n":2},{"from":"/industry/retail-consumer-goods","to":"/pricing","n":2},{"from":"dashboard.retellai.com/","to":"dashboard.retellai.com/integrations","n":2},{"from":"/integrations/ring-central","to":"/","n":2},{"from":"dashboard.retellai.com/analytics","to":"dashboard.retellai.com/live-monitoring","n":2},{"from":"dashboard.retellai.com/","to":"__BOOKED__","n":2},{"from":"__START__","to":"dashboard.retellai.com/analytics","n":2},{"from":"dashboard.retellai.com/agents/:agent","to":"/","n":2},{"from":"__START__","to":"/blog/best-ai-tools-real-estate-agents","n":1},{"from":"/blog/best-ai-tools-real-estate-agents","to":"/pricing","n":1},{"from":"__START__","to":"/blog/vapi-vs-bland","n":1},{"from":"/blog/vapi-vs-bland","to":"/enterprise-plan","n":1},{"from":"__START__","to":"/comparisons/retell-vs-synthflow","n":1},{"from":"/comparisons/retell-vs-synthflow","to":"__BOOKED__","n":1},{"from":"/about-us","to":"/enterprise-plan","n":1},{"from":"__START__","to":"/blog/retell-vs-vapi","n":1},{"from":"/blog/retell-vs-vapi","to":"/industry/insurance","n":1},{"from":"/pricing","to":"dashboard.retellai.com/","n":1},{"from":"dashboard.retellai.com/agents/:agent","to":"dashboard.retellai.com/billing","n":1},{"from":"dashboard.retellai.com/agents","to":"dashboard.retellai.com/live-monitoring","n":1},{"from":"dashboard.retellai.com/analytics","to":"dashboard.retellai.com/call-history","n":1},{"from":"__START__","to":"docs.retellai.com/deprecation-notice/2026/06-15_legacy_list_endpoints","n":1},{"from":"__START__","to":"dashboard.retellai.com/live-monitoring","n":1},{"from":"dashboard.retellai.com/live-monitoring","to":"docs.retellai.com/general/introduction","n":1},{"from":"docs.retellai.com/general/introduction","to":"docs.retellai.com/features/live-monitoring","n":1},{"from":"docs.retellai.com/features/live-monitoring","to":"docs.retellai.com/features/session-history","n":1},{"from":"docs.retellai.com/features/session-history","to":"docs.retellai.com/features/session-history","n":1},{"from":"docs.retellai.com/features/session-history","to":"docs.retellai.com/build/agent-handbook","n":1},{"from":"docs.retellai.com/build/agent-handbook","to":"docs.retellai.com/build/agent-handbook","n":1},{"from":"docs.retellai.com/build/agent-handbook","to":"docs.retellai.com/build/knowledge-base","n":1},{"from":"docs.retellai.com/build/knowledge-base","to":"docs.retellai.com/build/knowledge-base","n":1},{"from":"docs.retellai.com/build/knowledge-base","to":"/build/dynamic-variables","n":1},{"from":"docs.retellai.com/build/dynamic-variables","to":"/build/dynamic-variables","n":1},{"from":"docs.retellai.com/build/dynamic-variables","to":"/features/live-monitoring","n":1},{"from":"/features/live-monitoring","to":"/features/live-monitoring","n":1},{"from":"/features/live-monitoring","to":"docs.retellai.com/features/live-monitoring","n":1},{"from":"docs.retellai.com/features/live-monitoring","to":"/features/session-history","n":1},{"from":"docs.retellai.com/features/session-history","to":"/features/session-history","n":1},{"from":"docs.retellai.com/features/session-history","to":"/features/analytics-dashboard","n":1},{"from":"docs.retellai.com/features/analytics-dashboard","to":"/features/analytics-dashboard","n":1},{"from":"docs.retellai.com/features/analytics-dashboard","to":"docs.retellai.com/ai-qa/overview","n":1},{"from":"docs.retellai.com/ai-qa/overview","to":"docs.retellai.com/ai-qa/overview","n":1},{"from":"docs.retellai.com/ai-qa/overview","to":"docs.retellai.com/reliability/wrong-transcript","n":1},{"from":"docs.retellai.com/reliability/wrong-transcript","to":"docs.retellai.com/reliability/wrong-transcript","n":1},{"from":"docs.retellai.com/reliability/wrong-transcript","to":"docs.retellai.com/reliability/call-performance","n":1},{"from":"docs.retellai.com/reliability/call-performance","to":"docs.retellai.com/reliability/call-performance","n":1},{"from":"docs.retellai.com/reliability/call-performance","to":"/reliability/debug-calls-pcap","n":1},{"from":"docs.retellai.com/reliability/debug-calls-pcap","to":"/reliability/debug-calls-pcap","n":1},{"from":"docs.retellai.com/reliability/debug-calls-pcap","to":"/reliability/fraud-protection","n":1},{"from":"/reliability/fraud-protection","to":"/reliability/fraud-protection","n":1},{"from":"/reliability/fraud-protection","to":"docs.retellai.com/reliability/fraud-protection","n":1},{"from":"docs.retellai.com/reliability/fraud-protection","to":"docs.retellai.com/reliability/fraud-protection","n":1},{"from":"docs.retellai.com/reliability/fraud-protection","to":"/accounts/workspace","n":1},{"from":"docs.retellai.com/accounts/workspace","to":"dashboard.retellai.com/live-monitoring","n":1},{"from":"dashboard.retellai.com/live-monitoring","to":"dashboard.retellai.com/agents/:agent","n":1},{"from":"docs.retellai.com/get-started/sdk","to":"docs.retellai.com/build/telephony/call_efficiency_overview","n":1},{"from":"docs.retellai.com/build/telephony/call_efficiency_overview","to":"docs.retellai.com/build/no-response","n":1},{"from":"docs.retellai.com/build/no-response","to":"docs.retellai.com/build/no-response","n":1},{"from":"docs.retellai.com/build/no-response","to":"dashboard.retellai.com/call-history","n":1},{"from":"dashboard.retellai.com/settings/workspace","to":"dashboard.retellai.com/settings/api-keys","n":1},{"from":"dashboard.retellai.com/settings/api-keys","to":"dashboard.retellai.com/settings/api-keys","n":1},{"from":"dashboard.retellai.com/settings/api-keys","to":"__BOOKED__","n":1},{"from":"dashboard.retellai.com/call-history","to":"dashboard.retellai.com/live-monitoring","n":1},{"from":"dashboard.retellai.com/phoneNumbers","to":"dashboard.retellai.com/settings/webhooks","n":1},{"from":"dashboard.retellai.com/settings/webhooks","to":"dashboard.retellai.com/agents","n":1},{"from":"dashboard.retellai.com/agents","to":"dashboard.retellai.com/settings/webhooks","n":1},{"from":"dashboard.retellai.com/settings/webhooks","to":"dashboard.retellai.com/phoneNumbers","n":1},{"from":"docs.retellai.com/general/introduction","to":"docs.retellai.com/integrations/crm-mappings","n":1},{"from":"docs.retellai.com/integrations/crm-mappings","to":"dashboard.retellai.com/call-history","n":1},{"from":"docs.retellai.com/reliability/debug-call-disconnect","to":"dashboard.retellai.com/agents","n":1},{"from":"__START__","to":"dashboard.retellai.com/integrations","n":1},{"from":"dashboard.retellai.com/integrations","to":"dashboard.retellai.com/integrations","n":1},{"from":"dashboard.retellai.com/integrations","to":"dashboard.retellai.com/live-monitoring","n":1},{"from":"docs.retellai.com/general/introduction","to":"/get-started/sdk","n":1},{"from":"docs.retellai.com/get-started/sdk","to":"/get-started/sdk","n":1},{"from":"/changelog","to":"docs.retellai.com/build/telephony/call_efficiency_overview","n":1},{"from":"docs.retellai.com/build/telephony/call_efficiency_overview","to":"docs.retellai.com/build/telephony/verified-phone","n":1},{"from":"docs.retellai.com/build/telephony/verified-phone","to":"docs.retellai.com/build/telephony/verified-phone","n":1},{"from":"docs.retellai.com/build/telephony/verified-phone","to":"/build/telephony/delete-service","n":1},{"from":"docs.retellai.com/build/telephony/delete-service","to":"/build/telephony/delete-service","n":1},{"from":"docs.retellai.com/build/telephony/delete-service","to":"__BOOKED__","n":1},{"from":"/changelog","to":"docs.retellai.com/get-started/sdk","n":1},{"from":"/changelog","to":"docs.retellai.com/build/telephony/delete-service","n":1},{"from":"docs.retellai.com/get-started/sdk","to":"__BOOKED__","n":1},{"from":"/changelog","to":"/changelog/agent-versioning-2-0-granular-multilingual-custom-voicemail-voice-orb-and-more","n":1},{"from":"/changelog/agent-versioning-2-0-granular-multilingual-custom-voicemail-voice-orb-and-more","to":"/changelog/agent-versioning-2-0-granular-multilingual-custom-voicemail-voice-orb-and-more","n":1},{"from":"/changelog/agent-versioning-2-0-granular-multilingual-custom-voicemail-voice-orb-and-more","to":"/changelog","n":1},{"from":"/changelog","to":"docs.retellai.com/build/platform-voices","n":1},{"from":"docs.retellai.com/build/platform-voices","to":"/build/tts-provider-comparison","n":1},{"from":"docs.retellai.com/build/tts-provider-comparison","to":"/build/tts-provider-comparison","n":1},{"from":"docs.retellai.com/build/tts-provider-comparison","to":"/accounts/workspace","n":1},{"from":"docs.retellai.com/accounts/workspace","to":"/accounts/account","n":1},{"from":"docs.retellai.com/accounts/account","to":"/accounts/account","n":1},{"from":"docs.retellai.com/accounts/account","to":"/changelog","n":1},{"from":"/changelog","to":"/pricing","n":1},{"from":"/pricing","to":"/comparisons/retell-vs-elevenlabs","n":1},{"from":"/comparisons/retell-vs-elevenlabs","to":"/comparisons/retell-vs-elevenlabs","n":1},{"from":"/comparisons/retell-vs-elevenlabs","to":"/changelog","n":1},{"from":"/blogs","to":"/blog/asr-llm-fallbacks","n":1},{"from":"/blog/asr-llm-fallbacks","to":"/blog/asr-llm-fallbacks","n":1},{"from":"/blog/asr-llm-fallbacks","to":"/blog/ios-call-screening","n":1},{"from":"/blog/ios-call-screening","to":"/blog/ios-call-screening","n":1},{"from":"/blog/ios-call-screening","to":"dashboard.retellai.com/billing","n":1},{"from":"dashboard.retellai.com/agents/:agent","to":"docs.retellai.com/integrations/crm-mappings","n":1},{"from":"docs.retellai.com/integrations/crm-mappings","to":"docs.retellai.com/general/introduction","n":1},{"from":"docs.retellai.com/general/introduction","to":"docs.retellai.com/build/platform-voices","n":1},{"from":"docs.retellai.com/build/platform-voices","to":"/build/platform-voices","n":1},{"from":"/build/platform-voices","to":"/build/platform-voices","n":1},{"from":"/build/platform-voices","to":"docs.retellai.com/build/platform-voices","n":1},{"from":"docs.retellai.com/build/platform-voices","to":"/changelog","n":1},{"from":"/changelog","to":"/changelog/flex-mode-advanced-warm-transfer-60-languages-and-more","n":1},{"from":"/changelog/flex-mode-advanced-warm-transfer-60-languages-and-more","to":"/changelog/flex-mode-advanced-warm-transfer-60-languages-and-more","n":1},{"from":"/changelog/flex-mode-advanced-warm-transfer-60-languages-and-more","to":"/blogs","n":1},{"from":"/blogs","to":"/blog/vcx-hard-benchmark","n":1},{"from":"/blog/vcx-hard-benchmark","to":"/blog/vcx-hard-benchmark","n":1},{"from":"/blog/vcx-hard-benchmark","to":"/blogs","n":1},{"from":"/blogs","to":"/changelog","n":1},{"from":"/changelog","to":"/changelog/cf-components-warm-transfer-caller-id-call-history-more","n":1},{"from":"/changelog/cf-components-warm-transfer-caller-id-call-history-more","to":"/changelog/cf-components-warm-transfer-caller-id-call-history-more","n":1},{"from":"/changelog/cf-components-warm-transfer-caller-id-call-history-more","to":"/changelog","n":1},{"from":"/changelog","to":"/changelog/node-kb-role-based-access-outbound-sms-api-more","n":1},{"from":"/changelog/node-kb-role-based-access-outbound-sms-api-more","to":"/changelog/node-kb-role-based-access-outbound-sms-api-more","n":1},{"from":"/changelog/node-kb-role-based-access-outbound-sms-api-more","to":"/pricing","n":1},{"from":"/pricing","to":"/changelog","n":1},{"from":"/blogs","to":"/blog/retell-asr","n":1},{"from":"/blog/retell-asr","to":"/blog/retell-asr","n":1},{"from":"/blog/retell-asr","to":"/blogs","n":1},{"from":"/blogs","to":"/blog/retell-ai-recognized-as-the-best-agentic-ai-software-by-g2","n":1},{"from":"/blog/retell-ai-recognized-as-the-best-agentic-ai-software-by-g2","to":"/blog/retell-ai-recognized-as-the-best-agentic-ai-software-by-g2","n":1},{"from":"/blog/retell-ai-recognized-as-the-best-agentic-ai-software-by-g2","to":"/blogs","n":1},{"from":"/blogs","to":"dashboard.retellai.com/agents/:agent","n":1},{"from":"dashboard.retellai.com/agents/:agent","to":"docs.retellai.com/build/telephony/delete-service","n":1},{"from":"docs.retellai.com/get-started/sdk","to":"dashboard.retellai.com/agents/:agent","n":1},{"from":"dashboard.retellai.com/billing","to":"dashboard.retellai.com/settings/workspace","n":1},{"from":"dashboard.retellai.com/settings/workspace","to":"docs.retellai.com/api-references/list-retell-llms","n":1},{"from":"docs.retellai.com/api-references/list-retell-llms","to":"docs.retellai.com/api-references/list-retell-llms","n":1},{"from":"docs.retellai.com/api-references/list-retell-llms","to":"docs.retellai.com/api-references/import-phone-number","n":1},{"from":"docs.retellai.com/api-references/import-phone-number","to":"docs.retellai.com/api-references/import-phone-number","n":1},{"from":"docs.retellai.com/api-references/import-phone-number","to":"dashboard.retellai.com/agents","n":1},{"from":"__START__","to":"docs.retellai.com/accounts/account","n":1},{"from":"docs.retellai.com/accounts/account","to":"docs.retellai.com/accounts/account","n":1},{"from":"docs.retellai.com/accounts/account","to":"dashboard.retellai.com/agents","n":1},{"from":"dashboard.retellai.com/phoneNumbers","to":"docs.retellai.com/get-started/sdk","n":1},{"from":"docs.retellai.com/get-started/sdk","to":"dashboard.retellai.com/phoneNumbers","n":1},{"from":"dashboard.retellai.com/phoneNumbers","to":"dashboard.retellai.com/settings/workspace","n":1},{"from":"dashboard.retellai.com/settings/workspace","to":"dashboard.retellai.com/agents","n":1},{"from":"__START__","to":"docs.retellai.com/general/introduction","n":1},{"from":"docs.retellai.com/general/introduction","to":"__BOOKED__","n":1},{"from":"__START__","to":"/get-started/sdk","n":1},{"from":"/get-started/sdk","to":"/get-started/sdk","n":1},{"from":"docs.retellai.com/get-started/sdk","to":"docs.retellai.com/api-references/create-phone-call","n":1},{"from":"docs.retellai.com/api-references/create-phone-call","to":"docs.retellai.com/api-references/create-phone-call","n":1},{"from":"docs.retellai.com/api-references/create-phone-call","to":"docs.retellai.com/deprecation-notice/overview","n":1},{"from":"docs.retellai.com/deprecation-notice/overview","to":"/changelog","n":1},{"from":"/changelog","to":"dashboard.retellai.com/call-history","n":1},{"from":"dashboard.retellai.com/call-history","to":"dashboard.retellai.com/billing","n":1},{"from":"dashboard.retellai.com/call-history","to":"dashboard.retellai.com/settings/workspace","n":1},{"from":"dashboard.retellai.com/settings/workspace","to":"docs.retellai.com/deprecation-notice/overview","n":1},{"from":"docs.retellai.com/deprecation-notice/overview","to":"docs.retellai.com/build/single-multi-prompt/transfer-agent","n":1},{"from":"docs.retellai.com/build/single-multi-prompt/transfer-agent","to":"dashboard.retellai.com/call-history","n":1},{"from":"dashboard.retellai.com/call-history","to":"docs.retellai.com/build/single-multi-prompt/transfer-agent","n":1},{"from":"docs.retellai.com/api-references/overview","to":"docs.retellai.com/build/single-multi-prompt/transfer-agent","n":1},{"from":"docs.retellai.com/api-references/overview","to":"docs.retellai.com/general/introduction","n":1},{"from":"docs.retellai.com/general/introduction","to":"/build/single-multi-prompt/transfer-agent","n":1},{"from":"docs.retellai.com/build/single-multi-prompt/transfer-agent","to":"/build/single-multi-prompt/transfer-agent","n":1},{"from":"docs.retellai.com/build/single-multi-prompt/transfer-agent","to":"docs.retellai.com/build/single-multi-prompt/transfer-call","n":1},{"from":"docs.retellai.com/build/single-multi-prompt/transfer-call","to":"docs.retellai.com/build/single-multi-prompt/transfer-call","n":1},{"from":"docs.retellai.com/build/single-multi-prompt/transfer-call","to":"__BOOKED__","n":1},{"from":"dashboard.retellai.com/","to":"dashboard.retellai.com/","n":1},{"from":"dashboard.retellai.com/","to":"dashboard.retellai.com/billing","n":1},{"from":"dashboard.retellai.com/billing","to":"dashboard.retellai.com/call-history","n":1},{"from":"dashboard.retellai.com/call-history","to":"docs.retellai.com/get-started/sdk","n":1},{"from":"docs.retellai.com/get-started/sdk","to":"docs.retellai.com/build/telephony/delete-service","n":1},{"from":"docs.retellai.com/build/telephony/delete-service","to":"docs.retellai.com/accounts/workspace","n":1},{"from":"docs.retellai.com/accounts/workspace","to":"docs.retellai.com/accounts/workspace","n":1},{"from":"docs.retellai.com/accounts/workspace","to":"docs.retellai.com/reliability/debug-call-disconnect","n":1},{"from":"dashboard.retellai.com/agents/:agent","to":"docs.retellai.com/deprecation-notice/2026/06-15_legacy_list_endpoints","n":1},{"from":"dashboard.retellai.com/call-history","to":"dashboard.retellai.com/analytics","n":1},{"from":"dashboard.retellai.com/analytics","to":"dashboard.retellai.com/agents/:agent","n":1},{"from":"dashboard.retellai.com/settings/workspace","to":"dashboard.retellai.com/agents/:agent","n":1},{"from":"__START__","to":"docs.retellai.com/accounts/billing-exceptions","n":1},{"from":"dashboard.retellai.com/call-history","to":"docs.retellai.com/accounts/billing-exceptions","n":1},{"from":"dashboard.retellai.com/call-history","to":"docs.retellai.com/general/compliance","n":1},{"from":"docs.retellai.com/general/compliance","to":"docs.retellai.com/general/compliance","n":1},{"from":"docs.retellai.com/general/compliance","to":"/","n":1},{"from":"/enterprise-plan","to":"/partners-program","n":1},{"from":"/partners-program","to":"/partners-program","n":1},{"from":"/partners-program","to":"/pricing","n":1},{"from":"/features/call-transfer","to":"/features/knowledge-base","n":1},{"from":"/features/knowledge-base","to":"/enterprise-plan","n":1},{"from":"/features/call-transfer","to":"__BOOKED__","n":1},{"from":"__START__","to":"/features/call-transfer","n":1},{"from":"/features/call-transfer","to":"/enterprise-plan","n":1},{"from":"dashboard.retellai.com/phoneNumbers","to":"dashboard.retellai.com/batchCall","n":1},{"from":"dashboard.retellai.com/phoneNumbers","to":"docs.retellai.com/general/introduction","n":1},{"from":"docs.retellai.com/general/introduction","to":"/build/conversation-flow/sms-node","n":1},{"from":"/build/conversation-flow/sms-node","to":"docs.retellai.com/build/conversation-flow/sms-node","n":1},{"from":"docs.retellai.com/build/conversation-flow/sms-node","to":"docs.retellai.com/deploy/enable-sms","n":1},{"from":"docs.retellai.com/deploy/enable-sms","to":"dashboard.retellai.com/agents","n":1},{"from":"__START__","to":"dashboard.retellai.com/batchCall","n":1},{"from":"dashboard.retellai.com/agents/:agent","to":"/enterprise-plan","n":1},{"from":"dashboard.retellai.com/knowledgeBase","to":"dashboard.retellai.com/agents","n":1},{"from":"__START__","to":"docs.retellai.com/api-references/overview","n":1},{"from":"docs.retellai.com/api-references/overview","to":"__BOOKED__","n":1},{"from":"dashboard.retellai.com/phoneNumbers","to":"dashboard.retellai.com/","n":1},{"from":"dashboard.retellai.com/","to":"dashboard.retellai.com/analytics","n":1},{"from":"__START__","to":"dashboard.retellai.com/settings/limits","n":1},{"from":"dashboard.retellai.com/settings/limits","to":"dashboard.retellai.com/agents","n":1},{"from":"dashboard.retellai.com/settings/workspace","to":"dashboard.retellai.com/settings/webhooks","n":1},{"from":"dashboard.retellai.com/settings/webhooks","to":"dashboard.retellai.com/billing","n":1},{"from":"dashboard.retellai.com/agents","to":"dashboard.retellai.com/quality-assurance","n":1},{"from":"dashboard.retellai.com/quality-assurance","to":"__BOOKED__","n":1},{"from":"__START__","to":"/comparisons/retell-vs-elevenlabs","n":1},{"from":"/comparisons/retell-vs-elevenlabs","to":"/enterprise-plan","n":1},{"from":"/enterprise-plan","to":"/comparisons/retell-vs-elevenlabs","n":1},{"from":"/comparisons/retell-vs-elevenlabs","to":"__LOST__","n":1},{"from":"/industry/insurance","to":"__BOOKED__","n":1},{"from":"/industry/healthcare-industry","to":"/integrations/epic","n":1},{"from":"/integrations/epic","to":"/industry/healthcare-industry","n":1},{"from":"/industry/healthcare-industry","to":"/","n":1},{"from":"/industry/healthcare-industry","to":"/integrations","n":1},{"from":"/integrations","to":"/integrations/epic","n":1},{"from":"/integrations/epic","to":"dashboard.retellai.com/agents","n":1},{"from":"__START__","to":"/integrations","n":1},{"from":"/integrations","to":"/","n":1},{"from":"__START__","to":"/blog/automating-prescription-refills","n":1},{"from":"/blog/automating-prescription-refills","to":"/enterprise-plan","n":1},{"from":"__START__","to":"docs.retellai.com/integrations/salesforce","n":1},{"from":"docs.retellai.com/integrations/salesforce","to":"dashboard.retellai.com/","n":1},{"from":"dashboard.retellai.com/","to":"docs.retellai.com/build/single-multi-prompt/mcp","n":1},{"from":"docs.retellai.com/build/single-multi-prompt/mcp","to":"__LOST__","n":1},{"from":"/enterprise-plan","to":"dashboard.retellai.com/billing","n":1},{"from":"dashboard.retellai.com/billing","to":"/enterprise-plan","n":1},{"from":"/enterprise-plan","to":"/features/batch-call","n":1},{"from":"/features/batch-call","to":"/enterprise-plan","n":1},{"from":"dashboard.retellai.com/","to":"dashboard.retellai.com/agents/:agent","n":1},{"from":"/enterprise-plan","to":"/ai-customer-service","n":1},{"from":"/ai-customer-service","to":"/enterprise-plan","n":1},{"from":"/pricing","to":"/ai-customer-service","n":1},{"from":"/ai-customer-service","to":"dashboard.retellai.com/","n":1},{"from":"__START__","to":"/blog/ai-cold-calling","n":1},{"from":"/blog/ai-cold-calling","to":"/enterprise-plan","n":1},{"from":"/pricing","to":"/use-cases/customer-support","n":1},{"from":"/use-cases/customer-support","to":"/pricing","n":1},{"from":"/enterprise-plan","to":"/use-cases/customer-support","n":1},{"from":"/","to":"/features/navigate-ivr","n":1},{"from":"/features/navigate-ivr","to":"/","n":1},{"from":"/features/call-transfer","to":"/features/navigate-ivr","n":1},{"from":"/features/navigate-ivr","to":"/industry/retail-consumer-goods","n":1},{"from":"/industry/retail-consumer-goods","to":"/features/batch-call","n":1},{"from":"/features/batch-call","to":"/features/branded-call-id","n":1},{"from":"/features/branded-call-id","to":"/features/verified-phone-numbers","n":1},{"from":"/features/verified-phone-numbers","to":"/features/knowledge-base","n":1},{"from":"/features/knowledge-base","to":"/features/navigate-ivr","n":1},{"from":"/features/navigate-ivr","to":"/use-cases/receptionists","n":1},{"from":"/use-cases/receptionists","to":"/pricing","n":1},{"from":"dashboard.retellai.com/integrations","to":"dashboard.retellai.com/phoneNumbers","n":1},{"from":"/integrations/ring-central","to":"dashboard.retellai.com/phoneNumbers","n":1},{"from":"/integrations/ring-central","to":"/integrations","n":1},{"from":"/integrations","to":"dashboard.retellai.com/","n":1},{"from":"dashboard.retellai.com/integrations","to":"dashboard.retellai.com/billing","n":1},{"from":"dashboard.retellai.com/live-monitoring","to":"/integrations/ring-central","n":1},{"from":"/industry/retail-consumer-goods","to":"/enterprise-plan","n":1},{"from":"dashboard.retellai.com/agents","to":"dashboard.retellai.com/","n":1},{"from":"__START__","to":"docs.retellai.com/general/compliance","n":1},{"from":"docs.retellai.com/general/compliance","to":"__LOST__","n":1},{"from":"/pricing","to":"dashboard.retellai.com/agents","n":1},{"from":"dashboard.retellai.com/agents","to":"/pricing","n":1},{"from":"dashboard.retellai.com/agents","to":"docs.retellai.com/general/introduction","n":1},{"from":"docs.retellai.com/general/introduction","to":"dashboard.retellai.com/phoneNumbers","n":1},{"from":"dashboard.retellai.com/analytics","to":"__BOOKED__","n":1},{"from":"dashboard.retellai.com/","to":"/enterprise-plan","n":1},{"from":"/","to":"/integrations/ring-central","n":1},{"from":"/integrations/ring-central","to":"dashboard.retellai.com/","n":1},{"from":"/enterprise-plan","to":"/industry/financial-services","n":1},{"from":"/industry/financial-services","to":"__BOOKED__","n":1},{"from":"__START__","to":"/blog/best-ai-voice-platforms-virtual-receptionists","n":1},{"from":"/blog/best-ai-voice-platforms-virtual-receptionists","to":"/enterprise-plan","n":1},{"from":"dashboard.retellai.com/analytics","to":"__LOST__","n":1},{"from":"dashboard.retellai.com/phoneNumbers","to":"dashboard.retellai.com/persona-redirect","n":1},{"from":"dashboard.retellai.com/persona-redirect","to":"dashboard.retellai.com/phoneNumbers","n":1},{"from":"dashboard.retellai.com/billing","to":"dashboard.retellai.com/analytics","n":1},{"from":"dashboard.retellai.com/analytics","to":"dashboard.retellai.com/billing","n":1},{"from":"/","to":"/industry/logistics","n":1},{"from":"/industry/logistics","to":"/enterprise-plan","n":1},{"from":"dashboard.retellai.com/knowledgeBase","to":"/features/call-transfer","n":1},{"from":"/features/call-transfer","to":"dashboard.retellai.com/agents/:agent","n":1},{"from":"__START__","to":"dashboard.retellai.com/knowledgeBase","n":1},{"from":"__START__","to":"docs.retellai.com/general/support","n":1},{"from":"docs.retellai.com/general/support","to":"/use-cases/customer-support","n":1},{"from":"/","to":"/about-us","n":1},{"from":"__START__","to":"/blog/retell-vs-polyai-compare-ai-voice-app-builder","n":1},{"from":"/blog/retell-vs-polyai-compare-ai-voice-app-builder","to":"/","n":1}],"edgesWww":[{"from":"__START__","to":"/","n":54},{"from":"/enterprise-plan","to":"__BOOKED__","n":41},{"from":"/","to":"/enterprise-plan","n":31},{"from":"/","to":"/pricing","n":18},{"from":"/pricing","to":"/enterprise-plan","n":18},{"from":"/changelog","to":"/changelog","n":18},{"from":"/","to":"dashboard.retellai.com/","n":13},{"from":"dashboard.retellai.com/agents/:agent","to":"dashboard.retellai.com/phoneNumbers","n":12},{"from":"dashboard.retellai.com/","to":"dashboard.retellai.com/agents","n":11},{"from":"dashboard.retellai.com/phoneNumbers","to":"dashboard.retellai.com/agents/:agent","n":10},{"from":"/","to":"__BOOKED__","n":10},{"from":"dashboard.retellai.com/agents","to":"dashboard.retellai.com/agents/:agent","n":8},{"from":"/enterprise-plan","to":"__LOST__","n":8},{"from":"/enterprise-plan","to":"/pricing","n":7},{"from":"/enterprise-plan","to":"/","n":7},{"from":"/","to":"__LOST__","n":7},{"from":"dashboard.retellai.com/call-history","to":"dashboard.retellai.com/call-history","n":7},{"from":"/pricing","to":"/","n":6},{"from":"__START__","to":"/pricing","n":6},{"from":"dashboard.retellai.com/agents","to":"dashboard.retellai.com/phoneNumbers","n":6},{"from":"dashboard.retellai.com/agents/:agent","to":"dashboard.retellai.com/agents/:agent","n":6},{"from":"/blogs","to":"/blogs","n":6},{"from":"dashboard.retellai.com/agents/:agent","to":"__BOOKED__","n":5},{"from":"dashboard.retellai.com/agents/:agent","to":"dashboard.retellai.com/agents","n":5},{"from":"docs.retellai.com/general/introduction","to":"docs.retellai.com/general/introduction","n":4},{"from":"/accounts/workspace","to":"docs.retellai.com/accounts/workspace","n":4},{"from":"__START__","to":"/enterprise-plan","n":4},{"from":"__START__","to":"dashboard.retellai.com/agents/:agent","n":4},{"from":"dashboard.retellai.com/","to":"/","n":4},{"from":"dashboard.retellai.com/phoneNumbers","to":"dashboard.retellai.com/knowledgeBase","n":3},{"from":"/pricing","to":"__LOST__","n":3},{"from":"__START__","to":"dashboard.retellai.com/call-history","n":3},{"from":"/get-started/sdk","to":"docs.retellai.com/get-started/sdk","n":3},{"from":"docs.retellai.com/get-started/sdk","to":"/changelog","n":3},{"from":"docs.retellai.com/get-started/sdk","to":"docs.retellai.com/get-started/sdk","n":3},{"from":"__START__","to":"/changelog","n":3},{"from":"docs.retellai.com/build/platform-voices","to":"docs.retellai.com/build/platform-voices","n":3},{"from":"/pricing","to":"/pricing","n":3},{"from":"docs.retellai.com/build/single-multi-prompt/transfer-agent","to":"docs.retellai.com/build/single-multi-prompt/transfer-agent","n":3},{"from":"/pricing","to":"/features/call-transfer","n":3},{"from":"__START__","to":"dashboard.retellai.com/","n":3},{"from":"dashboard.retellai.com/phoneNumbers","to":"__BOOKED__","n":3},{"from":"/pricing","to":"__BOOKED__","n":3},{"from":"dashboard.retellai.com/agents","to":"/","n":3},{"from":"/pricing","to":"/industry/retail-consumer-goods","n":3},{"from":"dashboard.retellai.com/phoneNumbers","to":"/integrations/ring-central","n":3},{"from":"/enterprise-plan","to":"/about-us","n":2},{"from":"/industry/insurance","to":"/enterprise-plan","n":2},{"from":"/enterprise-plan","to":"/industry/insurance","n":2},{"from":"/about-us","to":"/","n":2},{"from":"dashboard.retellai.com/live-monitoring","to":"dashboard.retellai.com/live-monitoring","n":2},{"from":"docs.retellai.com/features/live-monitoring","to":"docs.retellai.com/features/live-monitoring","n":2},{"from":"/build/dynamic-variables","to":"docs.retellai.com/build/dynamic-variables","n":2},{"from":"/features/session-history","to":"docs.retellai.com/features/session-history","n":2},{"from":"/features/analytics-dashboard","to":"docs.retellai.com/features/analytics-dashboard","n":2},{"from":"/reliability/debug-calls-pcap","to":"docs.retellai.com/reliability/debug-calls-pcap","n":2},{"from":"docs.retellai.com/accounts/workspace","to":"/accounts/workspace","n":2},{"from":"/build/telephony/delete-service","to":"docs.retellai.com/build/telephony/delete-service","n":2},{"from":"docs.retellai.com/build/telephony/delete-service","to":"docs.retellai.com/build/telephony/delete-service","n":2},{"from":"docs.retellai.com/build/telephony/delete-service","to":"docs.retellai.com/get-started/sdk","n":2},{"from":"/build/tts-provider-comparison","to":"docs.retellai.com/build/tts-provider-comparison","n":2},{"from":"/accounts/account","to":"docs.retellai.com/accounts/account","n":2},{"from":"/changelog","to":"/changelog/chatgpt-app-dynamic-voice-speed-a-b-testing-and-more","n":2},{"from":"/changelog/chatgpt-app-dynamic-voice-speed-a-b-testing-and-more","to":"/changelog/chatgpt-app-dynamic-voice-speed-a-b-testing-and-more","n":2},{"from":"/changelog/chatgpt-app-dynamic-voice-speed-a-b-testing-and-more","to":"/changelog","n":2},{"from":"/changelog","to":"/blogs","n":2},{"from":"/changelog","to":"/changelog/agent-guardrails-webhook-testing-auto-failover-billing-transparency-more","n":2},{"from":"/changelog/agent-guardrails-webhook-testing-auto-failover-billing-transparency-more","to":"/changelog/agent-guardrails-webhook-testing-auto-failover-billing-transparency-more","n":2},{"from":"/changelog/agent-guardrails-webhook-testing-auto-failover-billing-transparency-more","to":"/changelog","n":2},{"from":"/changelog","to":"/changelog/ai-qa-analyst-custom-alert-notifications-node-search-and-everything-else-from-this-month","n":2},{"from":"/changelog/ai-qa-analyst-custom-alert-notifications-node-search-and-everything-else-from-this-month","to":"/changelog/ai-qa-analyst-custom-alert-notifications-node-search-and-everything-else-from-this-month","n":2},{"from":"/changelog/ai-qa-analyst-custom-alert-notifications-node-search-and-everything-else-from-this-month","to":"/changelog","n":2},{"from":"docs.retellai.com/deprecation-notice/overview","to":"docs.retellai.com/deprecation-notice/overview","n":2},{"from":"/changelog","to":"__BOOKED__","n":2},{"from":"dashboard.retellai.com/agents","to":"dashboard.retellai.com/agents","n":2},{"from":"dashboard.retellai.com/agents","to":"dashboard.retellai.com/call-history","n":2},{"from":"docs.retellai.com/build/single-multi-prompt/transfer-agent","to":"docs.retellai.com/api-references/overview","n":2},{"from":"docs.retellai.com/api-references/overview","to":"docs.retellai.com/api-references/overview","n":2},{"from":"/build/single-multi-prompt/transfer-agent","to":"docs.retellai.com/build/single-multi-prompt/transfer-agent","n":2},{"from":"/","to":"/","n":2},{"from":"/enterprise-plan","to":"/enterprise-plan","n":2},{"from":"dashboard.retellai.com/agents","to":"/enterprise-plan","n":2},{"from":"__START__","to":"dashboard.retellai.com/agents","n":2},{"from":"dashboard.retellai.com/knowledgeBase","to":"dashboard.retellai.com/phoneNumbers","n":2},{"from":"/","to":"/industry/healthcare-industry","n":2},{"from":"dashboard.retellai.com/phoneNumbers","to":"/pricing","n":2},{"from":"/enterprise-plan","to":"dashboard.retellai.com/","n":2},{"from":"/use-cases/customer-support","to":"/enterprise-plan","n":2},{"from":"__START__","to":"/es","n":2},{"from":"/es","to":"/es/plan-enterprise","n":2},{"from":"/es/plan-enterprise","to":"/enterprise-plan","n":2},{"from":"/industry/retail-consumer-goods","to":"/pricing","n":2},{"from":"dashboard.retellai.com/","to":"dashboard.retellai.com/integrations","n":2},{"from":"/integrations/ring-central","to":"/","n":2},{"from":"dashboard.retellai.com/agents/:agent","to":"dashboard.retellai.com/knowledgeBase","n":2},{"from":"dashboard.retellai.com/","to":"__BOOKED__","n":2},{"from":"dashboard.retellai.com/agents/:agent","to":"/","n":2},{"from":"__START__","to":"/blog/best-ai-tools-real-estate-agents","n":1},{"from":"/blog/best-ai-tools-real-estate-agents","to":"/pricing","n":1},{"from":"__START__","to":"/blog/vapi-vs-bland","n":1},{"from":"/blog/vapi-vs-bland","to":"/enterprise-plan","n":1},{"from":"__START__","to":"/comparisons/retell-vs-synthflow","n":1},{"from":"/comparisons/retell-vs-synthflow","to":"__BOOKED__","n":1},{"from":"/about-us","to":"/enterprise-plan","n":1},{"from":"__START__","to":"/blog/retell-vs-vapi","n":1},{"from":"/blog/retell-vs-vapi","to":"/industry/insurance","n":1},{"from":"/pricing","to":"dashboard.retellai.com/","n":1},{"from":"dashboard.retellai.com/knowledgeBase","to":"__BOOKED__","n":1},{"from":"__START__","to":"dashboard.retellai.com/live-monitoring","n":1},{"from":"dashboard.retellai.com/live-monitoring","to":"docs.retellai.com/general/introduction","n":1},{"from":"docs.retellai.com/general/introduction","to":"docs.retellai.com/features/live-monitoring","n":1},{"from":"docs.retellai.com/features/live-monitoring","to":"docs.retellai.com/features/session-history","n":1},{"from":"docs.retellai.com/features/session-history","to":"docs.retellai.com/features/session-history","n":1},{"from":"docs.retellai.com/features/session-history","to":"docs.retellai.com/build/agent-handbook","n":1},{"from":"docs.retellai.com/build/agent-handbook","to":"docs.retellai.com/build/agent-handbook","n":1},{"from":"docs.retellai.com/build/agent-handbook","to":"docs.retellai.com/build/knowledge-base","n":1},{"from":"docs.retellai.com/build/knowledge-base","to":"docs.retellai.com/build/knowledge-base","n":1},{"from":"docs.retellai.com/build/knowledge-base","to":"/build/dynamic-variables","n":1},{"from":"docs.retellai.com/build/dynamic-variables","to":"/build/dynamic-variables","n":1},{"from":"docs.retellai.com/build/dynamic-variables","to":"/features/live-monitoring","n":1},{"from":"/features/live-monitoring","to":"/features/live-monitoring","n":1},{"from":"/features/live-monitoring","to":"docs.retellai.com/features/live-monitoring","n":1},{"from":"docs.retellai.com/features/live-monitoring","to":"/features/session-history","n":1},{"from":"docs.retellai.com/features/session-history","to":"/features/session-history","n":1},{"from":"docs.retellai.com/features/session-history","to":"/features/analytics-dashboard","n":1},{"from":"docs.retellai.com/features/analytics-dashboard","to":"/features/analytics-dashboard","n":1},{"from":"docs.retellai.com/features/analytics-dashboard","to":"docs.retellai.com/ai-qa/overview","n":1},{"from":"docs.retellai.com/ai-qa/overview","to":"docs.retellai.com/ai-qa/overview","n":1},{"from":"docs.retellai.com/ai-qa/overview","to":"docs.retellai.com/reliability/wrong-transcript","n":1},{"from":"docs.retellai.com/reliability/wrong-transcript","to":"docs.retellai.com/reliability/wrong-transcript","n":1},{"from":"docs.retellai.com/reliability/wrong-transcript","to":"docs.retellai.com/reliability/call-performance","n":1},{"from":"docs.retellai.com/reliability/call-performance","to":"docs.retellai.com/reliability/call-performance","n":1},{"from":"docs.retellai.com/reliability/call-performance","to":"/reliability/debug-calls-pcap","n":1},{"from":"docs.retellai.com/reliability/debug-calls-pcap","to":"/reliability/debug-calls-pcap","n":1},{"from":"docs.retellai.com/reliability/debug-calls-pcap","to":"/reliability/fraud-protection","n":1},{"from":"/reliability/fraud-protection","to":"/reliability/fraud-protection","n":1},{"from":"/reliability/fraud-protection","to":"docs.retellai.com/reliability/fraud-protection","n":1},{"from":"docs.retellai.com/reliability/fraud-protection","to":"docs.retellai.com/reliability/fraud-protection","n":1},{"from":"docs.retellai.com/reliability/fraud-protection","to":"/accounts/workspace","n":1},{"from":"docs.retellai.com/accounts/workspace","to":"dashboard.retellai.com/live-monitoring","n":1},{"from":"dashboard.retellai.com/live-monitoring","to":"dashboard.retellai.com/agents/:agent","n":1},{"from":"dashboard.retellai.com/call-history","to":"docs.retellai.com/general/introduction","n":1},{"from":"docs.retellai.com/general/introduction","to":"/get-started/sdk","n":1},{"from":"docs.retellai.com/get-started/sdk","to":"/get-started/sdk","n":1},{"from":"/changelog","to":"docs.retellai.com/build/telephony/call_efficiency_overview","n":1},{"from":"docs.retellai.com/build/telephony/call_efficiency_overview","to":"docs.retellai.com/build/telephony/call_efficiency_overview","n":1},{"from":"docs.retellai.com/build/telephony/call_efficiency_overview","to":"docs.retellai.com/build/telephony/verified-phone","n":1},{"from":"docs.retellai.com/build/telephony/verified-phone","to":"docs.retellai.com/build/telephony/verified-phone","n":1},{"from":"docs.retellai.com/build/telephony/verified-phone","to":"/build/telephony/delete-service","n":1},{"from":"docs.retellai.com/build/telephony/delete-service","to":"/build/telephony/delete-service","n":1},{"from":"docs.retellai.com/build/telephony/delete-service","to":"__BOOKED__","n":1},{"from":"__START__","to":"docs.retellai.com/get-started/sdk","n":1},{"from":"/changelog","to":"docs.retellai.com/get-started/sdk","n":1},{"from":"/changelog","to":"docs.retellai.com/build/telephony/delete-service","n":1},{"from":"docs.retellai.com/get-started/sdk","to":"__BOOKED__","n":1},{"from":"/changelog","to":"/changelog/agent-versioning-2-0-granular-multilingual-custom-voicemail-voice-orb-and-more","n":1},{"from":"/changelog/agent-versioning-2-0-granular-multilingual-custom-voicemail-voice-orb-and-more","to":"/changelog/agent-versioning-2-0-granular-multilingual-custom-voicemail-voice-orb-and-more","n":1},{"from":"/changelog/agent-versioning-2-0-granular-multilingual-custom-voicemail-voice-orb-and-more","to":"/changelog","n":1},{"from":"/changelog","to":"docs.retellai.com/build/platform-voices","n":1},{"from":"docs.retellai.com/build/platform-voices","to":"/build/tts-provider-comparison","n":1},{"from":"docs.retellai.com/build/tts-provider-comparison","to":"/build/tts-provider-comparison","n":1},{"from":"docs.retellai.com/build/tts-provider-comparison","to":"/accounts/workspace","n":1},{"from":"docs.retellai.com/accounts/workspace","to":"/accounts/account","n":1},{"from":"docs.retellai.com/accounts/account","to":"/accounts/account","n":1},{"from":"docs.retellai.com/accounts/account","to":"/changelog","n":1},{"from":"/changelog","to":"/pricing","n":1},{"from":"/pricing","to":"/comparisons/retell-vs-elevenlabs","n":1},{"from":"/comparisons/retell-vs-elevenlabs","to":"/comparisons/retell-vs-elevenlabs","n":1},{"from":"/comparisons/retell-vs-elevenlabs","to":"/changelog","n":1},{"from":"/blogs","to":"/blog/asr-llm-fallbacks","n":1},{"from":"/blog/asr-llm-fallbacks","to":"/blog/asr-llm-fallbacks","n":1},{"from":"/blog/asr-llm-fallbacks","to":"/blog/ios-call-screening","n":1},{"from":"/blog/ios-call-screening","to":"/blog/ios-call-screening","n":1},{"from":"/blog/ios-call-screening","to":"dashboard.retellai.com/billing","n":1},{"from":"dashboard.retellai.com/billing","to":"dashboard.retellai.com/billing","n":1},{"from":"dashboard.retellai.com/billing","to":"dashboard.retellai.com/agents/:agent","n":1},{"from":"dashboard.retellai.com/agents/:agent","to":"docs.retellai.com/integrations/crm-mappings","n":1},{"from":"docs.retellai.com/integrations/crm-mappings","to":"docs.retellai.com/integrations/crm-mappings","n":1},{"from":"docs.retellai.com/integrations/crm-mappings","to":"docs.retellai.com/general/introduction","n":1},{"from":"docs.retellai.com/general/introduction","to":"docs.retellai.com/build/platform-voices","n":1},{"from":"docs.retellai.com/build/platform-voices","to":"/build/platform-voices","n":1},{"from":"/build/platform-voices","to":"/build/platform-voices","n":1},{"from":"/build/platform-voices","to":"docs.retellai.com/build/platform-voices","n":1},{"from":"docs.retellai.com/build/platform-voices","to":"/changelog","n":1},{"from":"/changelog","to":"/changelog/flex-mode-advanced-warm-transfer-60-languages-and-more","n":1},{"from":"/changelog/flex-mode-advanced-warm-transfer-60-languages-and-more","to":"/changelog/flex-mode-advanced-warm-transfer-60-languages-and-more","n":1},{"from":"/changelog/flex-mode-advanced-warm-transfer-60-languages-and-more","to":"/blogs","n":1},{"from":"/blogs","to":"/blog/vcx-hard-benchmark","n":1},{"from":"/blog/vcx-hard-benchmark","to":"/blog/vcx-hard-benchmark","n":1},{"from":"/blog/vcx-hard-benchmark","to":"/blogs","n":1},{"from":"/blogs","to":"/changelog","n":1},{"from":"/changelog","to":"/changelog/cf-components-warm-transfer-caller-id-call-history-more","n":1},{"from":"/changelog/cf-components-warm-transfer-caller-id-call-history-more","to":"/changelog/cf-components-warm-transfer-caller-id-call-history-more","n":1},{"from":"/changelog/cf-components-warm-transfer-caller-id-call-history-more","to":"/changelog","n":1},{"from":"/changelog","to":"/changelog/node-kb-role-based-access-outbound-sms-api-more","n":1},{"from":"/changelog/node-kb-role-based-access-outbound-sms-api-more","to":"/changelog/node-kb-role-based-access-outbound-sms-api-more","n":1},{"from":"/changelog/node-kb-role-based-access-outbound-sms-api-more","to":"/pricing","n":1},{"from":"/pricing","to":"/changelog","n":1},{"from":"/blogs","to":"/blog/retell-asr","n":1},{"from":"/blog/retell-asr","to":"/blog/retell-asr","n":1},{"from":"/blog/retell-asr","to":"/blogs","n":1},{"from":"/blogs","to":"/blog/retell-ai-recognized-as-the-best-agentic-ai-software-by-g2","n":1},{"from":"/blog/retell-ai-recognized-as-the-best-agentic-ai-software-by-g2","to":"/blog/retell-ai-recognized-as-the-best-agentic-ai-software-by-g2","n":1},{"from":"/blog/retell-ai-recognized-as-the-best-agentic-ai-software-by-g2","to":"/blogs","n":1},{"from":"/blogs","to":"dashboard.retellai.com/agents/:agent","n":1},{"from":"dashboard.retellai.com/phoneNumbers","to":"dashboard.retellai.com/phoneNumbers","n":1},{"from":"dashboard.retellai.com/agents/:agent","to":"docs.retellai.com/build/telephony/delete-service","n":1},{"from":"docs.retellai.com/get-started/sdk","to":"dashboard.retellai.com/agents/:agent","n":1},{"from":"__START__","to":"/get-started/sdk","n":1},{"from":"/get-started/sdk","to":"/get-started/sdk","n":1},{"from":"docs.retellai.com/get-started/sdk","to":"docs.retellai.com/api-references/create-phone-call","n":1},{"from":"docs.retellai.com/api-references/create-phone-call","to":"docs.retellai.com/api-references/create-phone-call","n":1},{"from":"docs.retellai.com/api-references/create-phone-call","to":"docs.retellai.com/deprecation-notice/overview","n":1},{"from":"docs.retellai.com/deprecation-notice/overview","to":"/changelog","n":1},{"from":"/changelog","to":"dashboard.retellai.com/call-history","n":1},{"from":"dashboard.retellai.com/call-history","to":"__BOOKED__","n":1},{"from":"dashboard.retellai.com/call-history","to":"dashboard.retellai.com/agents","n":1},{"from":"dashboard.retellai.com/call-history","to":"dashboard.retellai.com/settings/workspace","n":1},{"from":"dashboard.retellai.com/settings/workspace","to":"dashboard.retellai.com/settings/workspace","n":1},{"from":"dashboard.retellai.com/settings/workspace","to":"docs.retellai.com/deprecation-notice/overview","n":1},{"from":"docs.retellai.com/deprecation-notice/overview","to":"docs.retellai.com/build/single-multi-prompt/transfer-agent","n":1},{"from":"docs.retellai.com/build/single-multi-prompt/transfer-agent","to":"dashboard.retellai.com/call-history","n":1},{"from":"dashboard.retellai.com/call-history","to":"docs.retellai.com/build/single-multi-prompt/transfer-agent","n":1},{"from":"docs.retellai.com/api-references/overview","to":"docs.retellai.com/build/single-multi-prompt/transfer-agent","n":1},{"from":"docs.retellai.com/api-references/overview","to":"docs.retellai.com/general/introduction","n":1},{"from":"docs.retellai.com/general/introduction","to":"/build/single-multi-prompt/transfer-agent","n":1},{"from":"docs.retellai.com/build/single-multi-prompt/transfer-agent","to":"/build/single-multi-prompt/transfer-agent","n":1},{"from":"docs.retellai.com/build/single-multi-prompt/transfer-agent","to":"docs.retellai.com/build/single-multi-prompt/transfer-call","n":1},{"from":"docs.retellai.com/build/single-multi-prompt/transfer-call","to":"docs.retellai.com/build/single-multi-prompt/transfer-call","n":1},{"from":"docs.retellai.com/build/single-multi-prompt/transfer-call","to":"__BOOKED__","n":1},{"from":"dashboard.retellai.com/call-history","to":"docs.retellai.com/accounts/billing-exceptions","n":1},{"from":"docs.retellai.com/accounts/billing-exceptions","to":"docs.retellai.com/accounts/billing-exceptions","n":1},{"from":"docs.retellai.com/accounts/billing-exceptions","to":"dashboard.retellai.com/agents","n":1},{"from":"dashboard.retellai.com/call-history","to":"docs.retellai.com/general/compliance","n":1},{"from":"docs.retellai.com/general/compliance","to":"docs.retellai.com/general/compliance","n":1},{"from":"docs.retellai.com/general/compliance","to":"/","n":1},{"from":"/enterprise-plan","to":"/partners-program","n":1},{"from":"/partners-program","to":"/partners-program","n":1},{"from":"/partners-program","to":"/pricing","n":1},{"from":"/features/call-transfer","to":"/features/knowledge-base","n":1},{"from":"/features/knowledge-base","to":"/enterprise-plan","n":1},{"from":"/features/call-transfer","to":"__BOOKED__","n":1},{"from":"__START__","to":"/features/call-transfer","n":1},{"from":"/features/call-transfer","to":"/enterprise-plan","n":1},{"from":"dashboard.retellai.com/phoneNumbers","to":"docs.retellai.com/general/introduction","n":1},{"from":"docs.retellai.com/general/introduction","to":"/build/conversation-flow/sms-node","n":1},{"from":"/build/conversation-flow/sms-node","to":"docs.retellai.com/build/conversation-flow/sms-node","n":1},{"from":"docs.retellai.com/build/conversation-flow/sms-node","to":"docs.retellai.com/deploy/enable-sms","n":1},{"from":"docs.retellai.com/deploy/enable-sms","to":"dashboard.retellai.com/agents","n":1},{"from":"dashboard.retellai.com/knowledgeBase","to":"dashboard.retellai.com/agents/:agent","n":1},{"from":"dashboard.retellai.com/agents/:agent","to":"/enterprise-plan","n":1},{"from":"__START__","to":"/comparisons/retell-vs-elevenlabs","n":1},{"from":"/comparisons/retell-vs-elevenlabs","to":"/enterprise-plan","n":1},{"from":"/enterprise-plan","to":"/comparisons/retell-vs-elevenlabs","n":1},{"from":"/comparisons/retell-vs-elevenlabs","to":"__LOST__","n":1},{"from":"/industry/insurance","to":"__BOOKED__","n":1},{"from":"/industry/healthcare-industry","to":"/integrations/epic","n":1},{"from":"/integrations/epic","to":"/industry/healthcare-industry","n":1},{"from":"/industry/healthcare-industry","to":"/","n":1},{"from":"/industry/healthcare-industry","to":"/integrations","n":1},{"from":"/integrations","to":"/integrations/epic","n":1},{"from":"/integrations/epic","to":"dashboard.retellai.com/agents","n":1},{"from":"__START__","to":"/integrations","n":1},{"from":"/integrations","to":"/","n":1},{"from":"__START__","to":"/blog/automating-prescription-refills","n":1},{"from":"/blog/automating-prescription-refills","to":"/enterprise-plan","n":1},{"from":"/enterprise-plan","to":"dashboard.retellai.com/billing","n":1},{"from":"dashboard.retellai.com/billing","to":"/enterprise-plan","n":1},{"from":"/enterprise-plan","to":"/features/batch-call","n":1},{"from":"/features/batch-call","to":"/enterprise-plan","n":1},{"from":"__START__","to":"dashboard.retellai.com/phoneNumbers","n":1},{"from":"dashboard.retellai.com/","to":"dashboard.retellai.com/agents/:agent","n":1},{"from":"/enterprise-plan","to":"/ai-customer-service","n":1},{"from":"/ai-customer-service","to":"/enterprise-plan","n":1},{"from":"/pricing","to":"/ai-customer-service","n":1},{"from":"/ai-customer-service","to":"dashboard.retellai.com/","n":1},{"from":"__START__","to":"/blog/ai-cold-calling","n":1},{"from":"/blog/ai-cold-calling","to":"/enterprise-plan","n":1},{"from":"/pricing","to":"/use-cases/customer-support","n":1},{"from":"/use-cases/customer-support","to":"/pricing","n":1},{"from":"/enterprise-plan","to":"/use-cases/customer-support","n":1},{"from":"/","to":"/features/navigate-ivr","n":1},{"from":"/features/navigate-ivr","to":"/","n":1},{"from":"/features/call-transfer","to":"/features/navigate-ivr","n":1},{"from":"/features/navigate-ivr","to":"/industry/retail-consumer-goods","n":1},{"from":"/industry/retail-consumer-goods","to":"/features/batch-call","n":1},{"from":"/features/batch-call","to":"/features/branded-call-id","n":1},{"from":"/features/branded-call-id","to":"/features/verified-phone-numbers","n":1},{"from":"/features/verified-phone-numbers","to":"/features/knowledge-base","n":1},{"from":"/features/knowledge-base","to":"/features/navigate-ivr","n":1},{"from":"/features/navigate-ivr","to":"/use-cases/receptionists","n":1},{"from":"/use-cases/receptionists","to":"/pricing","n":1},{"from":"dashboard.retellai.com/integrations","to":"dashboard.retellai.com/phoneNumbers","n":1},{"from":"/integrations/ring-central","to":"dashboard.retellai.com/phoneNumbers","n":1},{"from":"/integrations/ring-central","to":"/integrations","n":1},{"from":"/integrations","to":"dashboard.retellai.com/","n":1},{"from":"dashboard.retellai.com/integrations","to":"dashboard.retellai.com/billing","n":1},{"from":"dashboard.retellai.com/billing","to":"dashboard.retellai.com/live-monitoring","n":1},{"from":"dashboard.retellai.com/live-monitoring","to":"/integrations/ring-central","n":1},{"from":"dashboard.retellai.com/phoneNumbers","to":"dashboard.retellai.com/agents","n":1},{"from":"/industry/retail-consumer-goods","to":"/enterprise-plan","n":1},{"from":"/pricing","to":"dashboard.retellai.com/agents","n":1},{"from":"dashboard.retellai.com/agents","to":"/pricing","n":1},{"from":"dashboard.retellai.com/agents","to":"docs.retellai.com/general/introduction","n":1},{"from":"docs.retellai.com/general/introduction","to":"dashboard.retellai.com/phoneNumbers","n":1},{"from":"dashboard.retellai.com/phoneNumbers","to":"dashboard.retellai.com/analytics","n":1},{"from":"dashboard.retellai.com/analytics","to":"dashboard.retellai.com/live-monitoring","n":1},{"from":"dashboard.retellai.com/live-monitoring","to":"dashboard.retellai.com/analytics","n":1},{"from":"dashboard.retellai.com/analytics","to":"__BOOKED__","n":1},{"from":"dashboard.retellai.com/","to":"/enterprise-plan","n":1},{"from":"/","to":"/integrations/ring-central","n":1},{"from":"/integrations/ring-central","to":"dashboard.retellai.com/","n":1},{"from":"/enterprise-plan","to":"/industry/financial-services","n":1},{"from":"/industry/financial-services","to":"__BOOKED__","n":1},{"from":"__START__","to":"/blog/best-ai-voice-platforms-virtual-receptionists","n":1},{"from":"/blog/best-ai-voice-platforms-virtual-receptionists","to":"/enterprise-plan","n":1},{"from":"dashboard.retellai.com/agents","to":"__LOST__","n":1},{"from":"dashboard.retellai.com/","to":"__LOST__","n":1},{"from":"/","to":"/industry/logistics","n":1},{"from":"/industry/logistics","to":"/enterprise-plan","n":1},{"from":"dashboard.retellai.com/knowledgeBase","to":"/features/call-transfer","n":1},{"from":"/features/call-transfer","to":"dashboard.retellai.com/agents/:agent","n":1},{"from":"__START__","to":"docs.retellai.com/general/support","n":1},{"from":"docs.retellai.com/general/support","to":"/use-cases/customer-support","n":1},{"from":"/","to":"/about-us","n":1},{"from":"__START__","to":"/blog/retell-vs-polyai-compare-ai-voice-app-builder","n":1},{"from":"/blog/retell-vs-polyai-compare-ai-voice-app-builder","to":"/","n":1}],"entryOrigins":[{"origin":"app dashboard","page":"dashboard.retellai.com/agents","scope":"all","n":75},{"origin":"app dashboard","page":"dashboard.retellai.com/call-history","scope":"all","n":24},{"origin":"app dashboard","page":"dashboard.retellai.com/agents/:agent","scope":"all","n":21},{"origin":"chatgpt","page":"/","scope":"all","n":19},{"origin":"chatgpt","page":"/","scope":"www","n":19},{"origin":"google","page":"/","scope":"all","n":15},{"origin":"google","page":"/","scope":"www","n":15},{"origin":"other / unlisted","page":"/","scope":"all","n":13},{"origin":"other / unlisted","page":"/","scope":"www","n":13},{"origin":"app dashboard","page":"dashboard.retellai.com/phoneNumbers","scope":"all","n":9},{"origin":"recommendation","page":"/","scope":"all","n":7},{"origin":"recommendation","page":"/","scope":"www","n":7},{"origin":"app dashboard","page":"dashboard.retellai.com/","scope":"all","n":6},{"origin":"app dashboard","page":"dashboard.retellai.com/billing","scope":"all","n":6},{"origin":"chatgpt","page":"/pricing","scope":"all","n":5},{"origin":"chatgpt","page":"/pricing","scope":"www","n":5},{"origin":"app dashboard","page":"dashboard.retellai.com/agents/:agent","scope":"www","n":4},{"origin":"other / unlisted","page":"docs.retellai.com/reliability/debug-call-disconnect","scope":"all","n":3},{"origin":"app dashboard","page":"dashboard.retellai.com/settings/workspace","scope":"all","n":3},{"origin":"app dashboard","page":"dashboard.retellai.com/call-history","scope":"www","n":3},{"origin":"other / unlisted","page":"/changelog","scope":"all","n":3},{"origin":"other / unlisted","page":"/changelog","scope":"www","n":3},{"origin":"other / unlisted","page":"/enterprise-plan","scope":"all","n":3},{"origin":"other / unlisted","page":"/enterprise-plan","scope":"www","n":3},{"origin":"app dashboard","page":"dashboard.retellai.com/","scope":"www","n":3},{"origin":"other / unlisted","page":"docs.retellai.com/get-started/sdk","scope":"all","n":2},{"origin":"app dashboard","page":"dashboard.retellai.com/agents","scope":"www","n":2},{"origin":"app dashboard","page":"dashboard.retellai.com/analytics","scope":"all","n":2},{"origin":"other / unlisted","page":"/blog/best-ai-tools-real-estate-agents","scope":"all","n":1},{"origin":"other / unlisted","page":"/blog/best-ai-tools-real-estate-agents","scope":"www","n":1},{"origin":"chatgpt","page":"/blog/vapi-vs-bland","scope":"all","n":1},{"origin":"chatgpt","page":"/blog/vapi-vs-bland","scope":"www","n":1},{"origin":"chatgpt","page":"/comparisons/retell-vs-synthflow","scope":"all","n":1},{"origin":"chatgpt","page":"/comparisons/retell-vs-synthflow","scope":"www","n":1},{"origin":"google","page":"/blog/retell-vs-vapi","scope":"all","n":1},{"origin":"google","page":"/blog/retell-vs-vapi","scope":"www","n":1},{"origin":"other / unlisted","page":"docs.retellai.com/deprecation-notice/2026/06-15_legacy_list_endpoints","scope":"all","n":1},{"origin":"app dashboard","page":"dashboard.retellai.com/live-monitoring","scope":"all","n":1},{"origin":"app dashboard","page":"dashboard.retellai.com/live-monitoring","scope":"www","n":1},{"origin":"app dashboard","page":"dashboard.retellai.com/integrations","scope":"all","n":1},{"origin":"other / unlisted","page":"docs.retellai.com/get-started/sdk","scope":"www","n":1},{"origin":"other / unlisted","page":"docs.retellai.com/accounts/account","scope":"all","n":1},{"origin":"other / unlisted","page":"docs.retellai.com/general/introduction","scope":"all","n":1},{"origin":"other / unlisted","page":"/get-started/sdk","scope":"all","n":1},{"origin":"other / unlisted","page":"/get-started/sdk","scope":"www","n":1},{"origin":"other / unlisted","page":"docs.retellai.com/accounts/billing-exceptions","scope":"all","n":1},{"origin":"google","page":"/features/call-transfer","scope":"all","n":1},{"origin":"google","page":"/features/call-transfer","scope":"www","n":1},{"origin":"app dashboard","page":"dashboard.retellai.com/batchCall","scope":"all","n":1},{"origin":"google","page":"docs.retellai.com/api-references/overview","scope":"all","n":1},{"origin":"app dashboard","page":"dashboard.retellai.com/settings/limits","scope":"all","n":1},{"origin":"google","page":"/enterprise-plan","scope":"all","n":1},{"origin":"google","page":"/enterprise-plan","scope":"www","n":1},{"origin":"recommendation","page":"/comparisons/retell-vs-elevenlabs","scope":"all","n":1},{"origin":"recommendation","page":"/comparisons/retell-vs-elevenlabs","scope":"www","n":1},{"origin":"google","page":"/integrations","scope":"all","n":1},{"origin":"google","page":"/integrations","scope":"www","n":1},{"origin":"google","page":"/blog/automating-prescription-refills","scope":"all","n":1},{"origin":"google","page":"/blog/automating-prescription-refills","scope":"www","n":1},{"origin":"other / unlisted","page":"docs.retellai.com/integrations/salesforce","scope":"all","n":1},{"origin":"app dashboard","page":"dashboard.retellai.com/phoneNumbers","scope":"www","n":1},{"origin":"google","page":"/blog/ai-cold-calling","scope":"all","n":1},{"origin":"google","page":"/blog/ai-cold-calling","scope":"www","n":1},{"origin":"google","page":"/es","scope":"all","n":1},{"origin":"google","page":"/es","scope":"www","n":1},{"origin":"google","page":"docs.retellai.com/general/compliance","scope":"all","n":1},{"origin":"other / unlisted","page":"/es","scope":"all","n":1},{"origin":"other / unlisted","page":"/es","scope":"www","n":1},{"origin":"other / unlisted","page":"/pricing","scope":"all","n":1},{"origin":"other / unlisted","page":"/pricing","scope":"www","n":1},{"origin":"google","page":"/blog/best-ai-voice-platforms-virtual-receptionists","scope":"all","n":1},{"origin":"google","page":"/blog/best-ai-voice-platforms-virtual-receptionists","scope":"www","n":1},{"origin":"app dashboard","page":"dashboard.retellai.com/knowledgeBase","scope":"all","n":1},{"origin":"recommendation","page":"docs.retellai.com/general/support","scope":"all","n":1},{"origin":"recommendation","page":"docs.retellai.com/general/support","scope":"www","n":1},{"origin":"recommendation","page":"/blog/retell-vs-polyai-compare-ai-voice-app-builder","scope":"all","n":1},{"origin":"recommendation","page":"/blog/retell-vs-polyai-compare-ai-voice-app-builder","scope":"www","n":1}],"inclusion":{"sessionsAll":245,"sessionsWww":97,"excluded":{"pure app":132,"docs, no site":16}},"sankey":{"maxstep":6,"mode":"icp","origins":["app dashboard","chatgpt","google","other / unlisted","recommendation"],"appHopsElided":18,"included":97,"excluded":{"pure app":132,"docs, no site":16},"flows":[{"c":0,"from":"app dashboard","to":"(landing pages)","n":1},{"c":0,"from":"app dashboard","to":"(other docs pages)","n":2},{"c":0,"from":"app dashboard","to":"/enterprise-plan","n":3},{"c":0,"from":"app dashboard","to":"/pricing","n":2},{"c":0,"from":"app dashboard","to":"docs.retellai.com/general/introduction","n":3},{"c":0,"from":"app dashboard","to":"homepage","n":3},{"c":0,"from":"chatgpt","to":"(blog & content)","n":1},{"c":0,"from":"chatgpt","to":"(landing pages)","n":1},{"c":0,"from":"chatgpt","to":"/pricing","n":5},{"c":0,"from":"chatgpt","to":"homepage","n":19},{"c":0,"from":"google","to":"(blog & content)","n":4},{"c":0,"from":"google","to":"(landing pages)","n":2},{"c":0,"from":"google","to":"(other site pages)","n":1},{"c":0,"from":"google","to":"/enterprise-plan","n":1},{"c":0,"from":"google","to":"homepage","n":15},{"c":0,"from":"other / unlisted","to":"(blog & content)","n":1},{"c":0,"from":"other / unlisted","to":"(other site pages)","n":2},{"c":0,"from":"other / unlisted","to":"/changelog","n":3},{"c":0,"from":"other / unlisted","to":"/enterprise-plan","n":3},{"c":0,"from":"other / unlisted","to":"/pricing","n":1},{"c":0,"from":"other / unlisted","to":"docs.retellai.com/get-started/sdk","n":1},{"c":0,"from":"other / unlisted","to":"homepage","n":13},{"c":0,"from":"recommendation","to":"(blog & content)","n":1},{"c":0,"from":"recommendation","to":"(landing pages)","n":1},{"c":0,"from":"recommendation","to":"(other docs pages)","n":1},{"c":0,"from":"recommendation","to":"homepage","n":7},{"c":1,"from":"(blog & content)","to":"(landing pages)","n":1},{"c":1,"from":"(blog & content)","to":"/enterprise-plan","n":4},{"c":1,"from":"(blog & content)","to":"/pricing","n":1},{"c":1,"from":"(blog & content)","to":"homepage","n":1},{"c":1,"from":"(landing pages)","to":"/enterprise-plan","n":2},{"c":1,"from":"(landing pages)","to":"homepage","n":1},{"c":1,"from":"(other docs pages)","to":"(landing pages)","n":1},{"c":1,"from":"(other docs pages)","to":"(other docs pages)","n":1},{"c":1,"from":"(other docs pages)","to":"docs.retellai.com/build/single-multi-prompt/transfer-agent","n":1},{"c":1,"from":"(other site pages)","to":"(other site pages)","n":2},{"c":1,"from":"(other site pages)","to":"docs.retellai.com/get-started/sdk","n":1},{"c":1,"from":"/changelog","to":"(other site pages)","n":1},{"c":1,"from":"/enterprise-plan","to":"/enterprise-plan","n":1},{"c":1,"from":"/pricing","to":"(landing pages)","n":1},{"c":1,"from":"/pricing","to":"/enterprise-plan","n":5},{"c":1,"from":"/pricing","to":"/pricing","n":1},{"c":1,"from":"docs.retellai.com/general/introduction","to":"(other docs pages)","n":1},{"c":1,"from":"docs.retellai.com/general/introduction","to":"(other site pages)","n":2},{"c":1,"from":"docs.retellai.com/get-started/sdk","to":"/changelog","n":1},{"c":1,"from":"homepage","to":"(landing pages)","n":4},{"c":1,"from":"homepage","to":"(other site pages)","n":1},{"c":1,"from":"homepage","to":"/enterprise-plan","n":24},{"c":1,"from":"homepage","to":"/pricing","n":11},{"c":1,"from":"homepage","to":"docs.retellai.com/general/introduction","n":1},{"c":1,"from":"homepage","to":"homepage","n":1},{"c":2,"from":"(landing pages)","to":"(landing pages)","n":2},{"c":2,"from":"(landing pages)","to":"/enterprise-plan","n":3},{"c":2,"from":"(landing pages)","to":"/pricing","n":1},{"c":2,"from":"(landing pages)","to":"homepage","n":1},{"c":2,"from":"(other docs pages)","to":"(other docs pages)","n":1},{"c":2,"from":"(other docs pages)","to":"homepage","n":1},{"c":2,"from":"(other site pages)","to":"(other docs pages)","n":1},{"c":2,"from":"(other site pages)","to":"/changelog","n":1},{"c":2,"from":"(other site pages)","to":"/enterprise-plan","n":2},{"c":2,"from":"(other site pages)","to":"docs.retellai.com/get-started/sdk","n":1},{"c":2,"from":"(other site pages)","to":"homepage","n":1},{"c":2,"from":"/changelog","to":"docs.retellai.com/get-started/sdk","n":1},{"c":2,"from":"/enterprise-plan","to":"(landing pages)","n":5},{"c":2,"from":"/enterprise-plan","to":"(other site pages)","n":2},{"c":2,"from":"/enterprise-plan","to":"/pricing","n":3},{"c":2,"from":"/enterprise-plan","to":"homepage","n":3},{"c":2,"from":"/pricing","to":"(landing pages)","n":2},{"c":2,"from":"/pricing","to":"/enterprise-plan","n":6},{"c":2,"from":"/pricing","to":"homepage","n":2},{"c":2,"from":"docs.retellai.com/build/single-multi-prompt/transfer-agent","to":"docs.retellai.com/build/single-multi-prompt/transfer-agent","n":1},{"c":2,"from":"docs.retellai.com/get-started/sdk","to":"(other docs pages)","n":1},{"c":2,"from":"homepage","to":"(landing pages)","n":1},{"c":2,"from":"homepage","to":"/enterprise-plan","n":1},{"c":2,"from":"homepage","to":"/pricing","n":1},{"c":3,"from":"(landing pages)","to":"(landing pages)","n":4},{"c":3,"from":"(landing pages)","to":"/enterprise-plan","n":2},{"c":3,"from":"(other docs pages)","to":"(other docs pages)","n":3},{"c":3,"from":"(other site pages)","to":"/enterprise-plan","n":1},{"c":3,"from":"(other site pages)","to":"homepage","n":1},{"c":3,"from":"/changelog","to":"docs.retellai.com/build/platform-voices","n":1},{"c":3,"from":"/enterprise-plan","to":"(landing pages)","n":1},{"c":3,"from":"/enterprise-plan","to":"/pricing","n":2},{"c":3,"from":"/pricing","to":"/enterprise-plan","n":3},{"c":3,"from":"docs.retellai.com/build/single-multi-prompt/transfer-agent","to":"(other docs pages)","n":1},{"c":3,"from":"docs.retellai.com/get-started/sdk","to":"(other site pages)","n":1},{"c":3,"from":"docs.retellai.com/get-started/sdk","to":"/changelog","n":1},{"c":3,"from":"homepage","to":"(landing pages)","n":1},{"c":3,"from":"homepage","to":"/enterprise-plan","n":3},{"c":3,"from":"homepage","to":"/pricing","n":2},{"c":3,"from":"homepage","to":"homepage","n":1},{"c":4,"from":"(landing pages)","to":"(landing pages)","n":1},{"c":4,"from":"(landing pages)","to":"/enterprise-plan","n":2},{"c":4,"from":"(landing pages)","to":"homepage","n":2},{"c":4,"from":"(other docs pages)","to":"(other docs pages)","n":1},{"c":4,"from":"(other docs pages)","to":"/changelog","n":1},{"c":4,"from":"(other docs pages)","to":"docs.retellai.com/build/single-multi-prompt/transfer-agent","n":1},{"c":4,"from":"(other site pages)","to":"docs.retellai.com/get-started/sdk","n":1},{"c":4,"from":"/changelog","to":"docs.retellai.com/build/telephony/delete-service","n":1},{"c":4,"from":"/enterprise-plan","to":"(landing pages)","n":2},{"c":4,"from":"/enterprise-plan","to":"/pricing","n":1},{"c":4,"from":"/enterprise-plan","to":"homepage","n":2},{"c":4,"from":"/pricing","to":"(landing pages)","n":1},{"c":4,"from":"/pricing","to":"/enterprise-plan","n":2},{"c":4,"from":"/pricing","to":"homepage","n":1},{"c":4,"from":"docs.retellai.com/build/platform-voices","to":"(other site pages)","n":1},{"c":4,"from":"homepage","to":"homepage","n":1},{"c":5,"from":"(landing pages)","to":"(landing pages)","n":1},{"c":5,"from":"(landing pages)","to":"/enterprise-plan","n":1},{"c":5,"from":"(landing pages)","to":"/pricing","n":2},{"c":5,"from":"(other docs pages)","to":"(other site pages)","n":1},{"c":5,"from":"(other site pages)","to":"(other docs pages)","n":1},{"c":5,"from":"/enterprise-plan","to":"/pricing","n":1},{"c":5,"from":"/enterprise-plan","to":"homepage","n":1},{"c":5,"from":"/pricing","to":"(landing pages)","n":1},{"c":5,"from":"docs.retellai.com/build/single-multi-prompt/transfer-agent","to":"(other docs pages)","n":1},{"c":5,"from":"docs.retellai.com/build/telephony/delete-service","to":"docs.retellai.com/get-started/sdk","n":1},{"c":5,"from":"docs.retellai.com/get-started/sdk","to":"/changelog","n":1},{"c":5,"from":"homepage","to":"/enterprise-plan","n":3},{"c":5,"from":"homepage","to":"/pricing","n":2}],"ends":[{"c":1,"from":"(landing pages)","end":"app","n":1},{"c":1,"from":"(landing pages)","end":"exit","n":1},{"c":1,"from":"/changelog","end":"app","n":1},{"c":1,"from":"/changelog","end":"exit","n":1},{"c":1,"from":"/enterprise-plan","end":"booked","n":5},{"c":1,"from":"/enterprise-plan","end":"exit","n":1},{"c":1,"from":"/pricing","end":"exit","n":1},{"c":1,"from":"homepage","end":"app","n":4},{"c":1,"from":"homepage","end":"exit","n":11},{"c":2,"from":"/enterprise-plan","end":"app","n":1},{"c":2,"from":"/enterprise-plan","end":"booked","n":17},{"c":2,"from":"/enterprise-plan","end":"exit","n":5},{"c":2,"from":"/pricing","end":"exit","n":3},{"c":2,"from":"docs.retellai.com/general/introduction","end":"app","n":1},{"c":3,"from":"(landing pages)","end":"exit","n":4},{"c":3,"from":"/enterprise-plan","end":"app","n":1},{"c":3,"from":"/enterprise-plan","end":"booked","n":7},{"c":3,"from":"/enterprise-plan","end":"exit","n":1},{"c":3,"from":"/pricing","end":"exit","n":2},{"c":3,"from":"homepage","end":"exit","n":1},{"c":4,"from":"(landing pages)","end":"app","n":1},{"c":4,"from":"(other docs pages)","end":"app","n":1},{"c":4,"from":"/enterprise-plan","end":"booked","n":3},{"c":4,"from":"/enterprise-plan","end":"exit","n":1},{"c":4,"from":"homepage","end":"exit","n":1},{"c":5,"from":"/changelog","end":"exit","n":1},{"c":5,"from":"/enterprise-plan","end":"booked","n":2},{"c":5,"from":"homepage","end":"exit","n":1},{"c":6,"from":"(landing pages)","end":"app","n":1},{"c":6,"from":"/enterprise-plan","end":"booked","n":4},{"c":6,"from":"/pricing","end":"app","n":1},{"c":6,"from":"docs.retellai.com/get-started/sdk","end":"exit","n":1},{"c":6,"from":"(landing pages)","end":"booked","n":1,"t":1},{"c":6,"from":"(other docs pages)","end":"app","n":1,"t":1},{"c":6,"from":"(other docs pages)","end":"exit","n":1,"t":1},{"c":6,"from":"(other site pages)","end":"app","n":1,"t":1},{"c":6,"from":"/changelog","end":"exit","n":1,"t":1},{"c":6,"from":"/pricing","end":"booked","n":2,"t":1},{"c":6,"from":"/pricing","end":"exit","n":2,"t":1},{"c":6,"from":"homepage","end":"exit","n":1,"t":1}]}}/*DATA-END*/;
+
+/* ---------- model: absorbing Markov chain ---------- */
+// States: pages (transient) + BOOKED, LOST (absorbing). START is a virtual
+// entry state. Each observed transition is a count; each session's last page
+// carries a count into the visitor's fate. Prior strength kappa adds
+// kappa*base pseudo-counts -> BOOKED and kappa*(1-base) -> LOST to every page.
+// Warehouse-sourced twin: same model, but the absorbing state is "reached the
+// form" rather than "booked", because the source cannot see submissions.
+const REACH = DATA.meta.graphMode === "reach";
+const pages = DATA.pages.map(p => ({...p}));
+const pageIx = new Map(pages.map((p, i) => [p.id, i]));
+const N = pages.length;
+
+// per-page outgoing: counts to pages, to BOOKED, to the second absorbing state
+// (LOST in fate mode, EXIT in event mode). Rebuilt when the semantics change.
+//
+// Two absorption semantics:
+//  - "fate":  every session end absorbs into the visitor's eventual outcome.
+//    Answers "is this page's visitor the booking kind?" — but paints BOOKED
+//    edges from pages you cannot book on.
+//  - "event": booking only happens at the gate (the demo-request form), so only
+//    gate session-ends by scheduled visitors absorb into BOOKED; every other
+//    session end is a neutral EXIT. Answers "does this walk reach the form?"
+const outTo = pages.map(() => new Map());
+const outB = new Float64Array(N), outL = new Float64Array(N), outApp = new Float64Array(N);
+const startTo = new Map();
+const inCount = pages.map(() => new Map()); // for detail panel (incoming)
+let totB = 0, totL = 0, totApp = 0, BASE = 0.5;
+
+// The denominator is a modeling choice. "www" keeps only sessions that touch the
+// marketing site at least once — the funnel's real denominator; pure-app and
+// docs-only sessions are answering a different question and were drowning the rate.
+const scopedEdges = () => S.scope === "www" ? DATA.edgesWww : DATA.edges;
+const pageVisits = p => S.scope === "www" ? p.visitsWww : p.visits;
+// A session ending inside the product is not "lost" — it was handed to the app.
+const endsInApp = from => from.startsWith("dashboard.");
+
+function buildCounts(mode) {
+  for (let i = 0; i < N; i++) { outTo[i].clear(); inCount[i].clear(); }
+  outB.fill(0); outL.fill(0); outApp.fill(0); startTo.clear();
+  for (const e of scopedEdges()) {
+    if (e.from === "__START__") { startTo.set(e.to, e.n); continue; }
+    const i = pageIx.get(e.from);
+    const absorbNonBooked = () => {
+      outL[i] += e.n;                       // model: everything not booked
+      if (endsInApp(e.from)) outApp[i] += e.n; // display: split out "handed to the app"
+    };
+    if (e.to === "__BOOKED__") {
+      if (mode === "fate" || GATES.has(e.from)) outB[i] += e.n;
+      else absorbNonBooked(); // event mode: session ended off-gate — no booking happened here
+    }
+    else if (e.to === "__LOST__") absorbNonBooked();
+    else {
+      const j = pageIx.get(e.to);
+      outTo[i].set(j, (outTo[i].get(j) || 0) + e.n);
+      inCount[j].set(i, (inCount[j].get(i) || 0) + e.n);
+    }
+  }
+  totB = outB.reduce((a, b) => a + b, 0);
+  totL = outL.reduce((a, b) => a + b, 0);
+  totApp = outApp.reduce((a, b) => a + b, 0);
+  BASE = totB / (totB + totL); // session-weighted: share of session-ends that book
+}
+
+const model = { g: new Float64Array(N), steps: new Float64Array(N), time: new Float64Array(N), startG: 0 };
+
+function solve(kappa) {
+  const bB = new Float64Array(N), T = new Float64Array(N), w = new Float64Array(N);
+  for (let i = 0; i < N; i++) {
+    let t = outB[i] + outL[i] + kappa;
+    for (const n of outTo[i].values()) t += n;
+    T[i] = t;
+    bB[i] = (outB[i] + kappa * BASE) / t;
+    w[i] = pages[i].visits ? pages[i].dwell / pages[i].visits : 0;
+  }
+  // Jacobi iterations for g = b + Q g ; steps = 1 + Q steps ; time = w + Q time
+  const g = model.g.fill(BASE), st = model.steps.fill(1), tm = model.time.fill(0);
+  for (let it = 0; it < 2000; it++) {
+    let delta = 0;
+    for (let i = 0; i < N; i++) {
+      let sg = bB[i], ss = 1, stt = w[i];
+      for (const [j, n] of outTo[i]) {
+        const p = n / T[i];
+        sg += p * g[j]; ss += p * st[j]; stt += p * tm[j];
+      }
+      delta = Math.max(delta, Math.abs(sg - g[i]));
+      g[i] = sg; st[i] = ss; tm[i] = stt;
+    }
+    if (delta < 1e-12) break;
+  }
+  // session start: mixture over entry pages (no prior — it is not a page).
+  // Also per origin channel, so each origin node carries its own prediction.
+  let sT = 0, sG = 0;
+  for (const n of startTo.values()) sT += n;
+  for (const [id, n] of startTo) sG += (n / sT) * g[pageIx.get(id)];
+  model.startG = sG;
+  for (const o of ORIGINS) {
+    let t = 0, acc = 0;
+    for (const e of DATA.entryOrigins) {
+      if (e.scope !== S.scope || e.origin !== o.id) continue;
+      t += e.n; acc += e.n * g[pageIx.get(e.page)];
+    }
+    o.gMean = t ? acc / t : BASE;
+  }
+}
+
+/* ---------- graph nodes ---------- */
+// Domain knowledge: pages that ARE the conversion mechanism, not just on the way.
+// /enterprise-plan hosts the demo-request form — the gate every booking passes through.
+const GATES = new Set(["/enterprise-plan"]);
+
+// START was an information-free bar: every session begins, so the node said
+// nothing. It becomes the self-reported origin channels instead — a segmentation
+// the reader cares about. (heard_about is self-reported and under-attributes;
+// the panel prints that caveat.)
+const ORIGINS = [...new Set(DATA.entryOrigins.map(e => e.origin))]
+  .sort().map(id => ({ id, pseudo: "start", origin: id }));
+const BOOKED = { id: REACH ? "REACHES FORM" : "BOOKED", pseudo: "booked" };
+const LOST = { id: "LOST", pseudo: "lost" };
+const APP = { id: "→ APP", pseudo: "app" };
+// The long tail folds into one aggregate node per property ("fold minors into
+// Other" — the Sankey best-practices research note). Display-only: the
+// model always runs on every real page.
+const OTHERS = [
+  { id: "(other www)", other: "www" },
+  { id: "(other dashboard)", other: "dashboard" },
+  { id: "(other docs)", other: "docs" },
+];
+const nodes = [...pages, ...ORIGINS, BOOKED, LOST, APP, ...OTHERS];
+const M = ORIGINS.length;
+const IX_ORIGIN0 = N, IX_BOOKED = N + M, IX_LOST = N + M + 1, IX_APP = N + M + 2,
+      IX_OTHER0 = N + M + 3;
+const originIx = new Map(ORIGINS.map((o, k) => [o.id, IX_ORIGIN0 + k]));
+const otherIx = prop => IX_OTHER0 + (prop === "www" ? 0 : prop === "dashboard" ? 1 : 2);
+
+let rngS = 1234;
+const rng = () => (rngS = (rngS * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+
+let maxVisits = 1;
+for (let i = 0; i < nodes.length; i++) {
+  const n = nodes[i];
+  n.ix = i;
+  n.x = (rng() - .5) * 900; n.y = (rng() - .5) * 600;
+  n.vx = 0; n.vy = 0; n.pin = false; n.anchor = false;
+  n.gate = !n.pseudo && !n.other && GATES.has(n.id);
+  n.folded = false; n.fateR = 0.5; n.r = 8;
+}
+// Node radius carries magnitude, so it depends on the scope and on how much each
+// outcome actually absorbs (outcome nodes used to be a fixed size, which hid the
+// single most basic fact: how much ends where).
+function sizeNodes() {
+  maxVisits = Math.max(...pages.map(pageVisits), 1);
+  for (const n of nodes) {
+    if (n.other) n.r = n.count ? 5 + 8 * Math.sqrt(n.visits / maxVisits) : 0; // 0 → hidden
+    else if (n.pseudo === "start") n.r = 6 + 9 * Math.sqrt((n.entries || 0) / Math.max(1, maxOriginEntries));
+    else if (n.pseudo) n.r = 9 + 13 * Math.sqrt((n.absorbed || 0) / Math.max(1, totEnds()));
+    else n.r = 3.5 + 11 * Math.sqrt(pageVisits(n) / maxVisits);
+  }
+}
+let maxOriginEntries = 1;
+const totEnds = () => Math.max(1, totB + totL);
+
+// display edges — rebuilt per mode, because the semantics decide where an
+// absorbing edge POINTS (event mode reroutes off-gate BOOKED ends to EXIT)
+let allEdges = [], maxEdge = 1;
+let neighbors = nodes.map(() => new Set());
+function buildGraphEdges(mode) {
+  // fold: pages under the map threshold collapse into their property's "(other)" node
+  for (let i = 0; i < N; i++)
+    nodes[i].folded = !nodes[i].gate && pageVisits(pages[i]) < S.mapMin;
+  const mapIx = i => nodes[i].folded ? otherIx(pages[i].prop) : i;
+  const merged = new Map();
+  const add = (a, b, n) => merged.set(a * 100000 + b, (merged.get(a * 100000 + b) || 0) + n);
+  for (const e of scopedEdges()) {
+    if (e.from === "__START__") continue; // entries come from the origin split below
+    const a = mapIx(pageIx.get(e.from));
+    let b;
+    if (e.to === "__BOOKED__")
+      b = (mode === "fate" || GATES.has(e.from)) ? IX_BOOKED
+        : endsInApp(e.from) ? IX_APP : IX_LOST;
+    else if (e.to === "__LOST__") b = endsInApp(e.from) ? IX_APP : IX_LOST;
+    else b = mapIx(pageIx.get(e.to));
+    add(a, b, e.n);
+  }
+  // entries: origin channel → first page
+  for (const en of DATA.entryOrigins) {
+    if (en.scope !== S.scope) continue;
+    add(originIx.get(en.origin), mapIx(pageIx.get(en.page)), en.n);
+  }
+  allEdges = [...merged].map(([key, n]) => {
+    const a = Math.floor(key / 100000), b = key % 100000;
+    return { a, b, n, self: a === b };
+  });
+  maxEdge = Math.max(...allEdges.map(e => e.n));
+  neighbors = nodes.map(() => new Set());
+  for (const e of allEdges) if (!e.self) { neighbors[e.a].add(e.b); neighbors[e.b].add(e.a); }
+  // aggregate stats for the three "(other)" nodes
+  for (const o of OTHERS) { o.visits = 0; o.dwell = 0; o.count = 0; o.gSum = 0; }
+  for (let i = 0; i < N; i++) if (nodes[i].folded) {
+    const o = nodes[otherIx(pages[i].prop)];
+    const v = pageVisits(pages[i]);
+    o.visits += v; o.dwell += pages[i].dwell;
+    o.count++; o.gSum += model.g[i] * v;
+  }
+  for (const o of OTHERS) o.gMean = o.visits ? o.gSum / o.visits : BASE;
+  // how much each outcome / origin actually carries — drives node radius
+  BOOKED.absorbed = totB; LOST.absorbed = totL - totApp; APP.absorbed = totApp;
+  maxOriginEntries = 1;
+  for (const o of ORIGINS) {
+    o.entries = DATA.entryOrigins
+      .filter(e => e.scope === S.scope && e.origin === o.id)
+      .reduce((s, e) => s + e.n, 0);
+    maxOriginEntries = Math.max(maxOriginEntries, o.entries);
+  }
+  sizeNodes();
+}
+
+/* ---------- force layout ---------- */
+let W = innerWidth, H = innerHeight;
+const PANEL = 330; // right control panel width incl. margin
+function pinAnchors() {
+  const usable = Math.max(400, W - PANEL);
+  for (const o of ORIGINS) o.pin = o.anchor = true;
+  BOOKED.pin = LOST.pin = APP.pin = true;
+  BOOKED.anchor = LOST.anchor = APP.anchor = true;
+  // origin channels stack down the left edge, ordered by volume
+  const sorted = [...ORIGINS].sort((a, b) => (b.entries || 0) - (a.entries || 0));
+  sorted.forEach((o, k) => {
+    o.x = -usable * 0.45;
+    o.y = (k - (sorted.length - 1) / 2) * Math.min(78, H * 0.16);
+  });
+  BOOKED.x = usable * 0.42; BOOKED.y = -H * 0.30;
+  LOST.x = usable * 0.42; LOST.y = H * 0.30;
+  APP.x = usable * 0.44; APP.y = H * 0.04;
+  // gates sit right beside BOOKED — nothing stands between the form and the meeting
+  for (const n of nodes) if (n.gate) {
+    n.pin = true; n.anchor = true;
+    n.x = BOOKED.x - usable * 0.07;
+    n.y = BOOKED.y + H * 0.06;
+  }
+}
+pinAnchors();
+
+let heat = 1;
+function tick() {
+  const rep = 7000, spring = 0.010, cgrav = 0.007, damp = 0.86;
+  for (let i = 0; i < nodes.length; i++) {
+    const a = nodes[i];
+    if (a.pin) continue;
+    let fx = -a.x * cgrav, fy = -a.y * cgrav * (S.fateLayout ? 0.15 : 1.7);
+    for (let j = 0; j < nodes.length; j++) {
+      if (i === j) continue;
+      const b = nodes[j];
+      let dx = a.x - b.x, dy = a.y - b.y;
+      let d2 = dx * dx + dy * dy + 40;
+      const f = rep / d2;
+      const d = Math.sqrt(d2);
+      fx += f * dx / d; fy += f * dy / d;
+    }
+    a.vx = (a.vx + fx * heat) * damp; a.vy = (a.vy + fy * heat) * damp;
+  }
+  for (const e of allEdges) {
+    if (e.self) continue;
+    const a = nodes[e.a], b = nodes[e.b];
+    const wgt = spring * (0.4 + Math.log2(1 + e.n) * 0.35);
+    const ideal = 130 + (a.r + b.r) * 2.5;
+    let dx = b.x - a.x, dy = b.y - a.y;
+    const d = Math.hypot(dx, dy) || 1;
+    const f = wgt * (d - ideal) / d;
+    if (!a.pin) { a.vx += f * dx * heat; a.vy += f * dy * heat; }
+    if (!b.pin) { b.vx -= f * dx * heat; b.vy -= f * dy * heat; }
+  }
+  // fate layout: height encodes gravity RANK (evenly spaced — a linear scale
+  // stacked the skewed event-mode distribution into one crowded band)
+  if (S.fateLayout) {
+    for (const n of nodes) {
+      if (n.pseudo || n.folded || (n.other && !n.count)) continue;
+      const ty = LOST.y + (BOOKED.y - LOST.y) * n.fateR;
+      n.vy += (ty - n.y) * 0.06;
+    }
+  }
+  // the doorway corridor is the gate's alone: no free page drifts past it
+  let gxMax = Infinity;
+  for (const n of nodes) if (n.gate) gxMax = Math.min(gxMax, n.x - 70);
+  for (const n of nodes) if (!n.pin) {
+    n.x += n.vx; n.y += n.vy;
+    if (!n.pseudo && n.x > gxMax) n.x = gxMax;
+  }
+  // collision: no two visible nodes overlap — labels need the breathing room
+  for (let pass = 0; pass < 2; pass++) {
+    for (let i = 0; i < nodes.length; i++) {
+      const a = nodes[i];
+      if (a.folded || (a.other && !a.count)) continue;
+      for (let j = i + 1; j < nodes.length; j++) {
+        const b = nodes[j];
+        if (b.folded || (b.other && !b.count)) continue;
+        // big nodes carry labels, so they claim more room than their radius
+        const minD = a.r + b.r + 10 + (a.r > 8 ? 8 : 0) + (b.r > 8 ? 8 : 0);
+        let dx = b.x - a.x, dy = b.y - a.y;
+        let d = Math.hypot(dx, dy);
+        if (d >= minD) continue;
+        if (d < 1e-3) { dx = 1; dy = 0; d = 1; }
+        const push = (minD - d) / d * 0.5;
+        if (!a.pin && !b.pin) {
+          a.x -= dx * push; a.y -= dy * push;
+          b.x += dx * push; b.y += dy * push;
+        } else if (!a.pin) { a.x -= dx * push * 2; a.y -= dy * push * 2; }
+        else if (!b.pin) { b.x += dx * push * 2; b.y += dy * push * 2; }
+      }
+    }
+  }
+  heat = Math.max(0.05, heat * 0.9985);
+}
+
+/* ---------- color ---------- */
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const COL = {
+  www: css("--www"), dashboard: css("--dashboard"), docs: css("--docs"),
+  booked: css("--booked"), lost: css("--lost"),
+  hi: css("--div-hi"), lo: css("--div-lo"), mid: css("--div-mid"),
+};
+function hex2rgb(h) { const n = parseInt(h.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
+function mix(h1, h2, t) {
+  const a = hex2rgb(h1), b = hex2rgb(h2);
+  return `rgb(${a.map((v, i) => Math.round(v + (b[i] - v) * t)).join(",")})`;
+}
+// sequential blue ramp for dwell (dark-mode steps, low -> high)
+const SEQ = ["#184f95", "#2a78d6", "#5598e7", "#86b6ef", "#cde2fb"];
+function seqColor(t) {
+  const x = Math.max(0, Math.min(1, t)) * (SEQ.length - 1);
+  const i = Math.min(SEQ.length - 2, Math.floor(x));
+  return mix(SEQ[i], SEQ[i + 1], x - i);
+}
+let gLo = 0, gHi = 1; // gravity color range (set after solve)
+// sqrt easing so near-base differences still register visibly
+function gravColor(g) {
+  if (g >= BASE) { const t = Math.sqrt((g - BASE) / Math.max(1e-9, gHi - BASE)); return mix(COL.mid, COL.hi, Math.min(1, t)); }
+  const t = Math.sqrt((BASE - g) / Math.max(1e-9, BASE - gLo)); return mix(COL.mid, COL.lo, Math.min(1, t));
+}
+const maxDwellMean = () => Math.max(...pages.map(p => p.visits ? p.dwell / p.visits : 0));
+
+/* ---------- state & controls ---------- */
+const S = { colorby: "gravity", mode: "event", scope: "www", kappa: 2, minEdge: 2,
+            minVisits: 8, mapMin: 3, fateLayout: true, loops: false, labels: true };
+const $ = id => document.getElementById(id);
+
+// Human labels at the point of reading — raw paths are debt (refinement #9)
+const RENAME = { "/": "homepage", "(other www)": "(other site pages)",
+                 "(other docs)": "(other docs pages)", "(other dashboard)": "(other app pages)" };
+const label = n => RENAME[n.id] || n.id.replace(/^dashboard\.retellai\.com/, "app")
+                                       .replace(/^docs\.retellai\.com/, "docs");
+
+// What a visit to each page means, humanly (public-safe domain knowledge)
+const MEANING = {
+  "/": "Homepage — most journeys land here",
+  "/pricing": "Self-serve pricing; its enterprise CTA routes to the gate",
+  "/enterprise-plan": "THE GATE — demo-request form; an embedded scheduler books the meeting",
+  "/changelog": "Momentum check — buyers watching whether the product is moving",
+  "dashboard.retellai.com/agents": "Agent list — the product console's front door",
+  "dashboard.retellai.com/agents/:agent": "Agent builder — configuring a real voice agent; deepest product engagement",
+  "dashboard.retellai.com/call-history": "Reviewing recordings/transcripts of real calls — the product in genuine use",
+  "dashboard.retellai.com/live-monitoring": "Watching production call traffic in real time",
+  "dashboard.retellai.com/knowledgeBase": "Uploading documents that ground an agent — building, not browsing",
+  "dashboard.retellai.com/billing": "Usage-based credits and spend — cost-checking",
+  "dashboard.retellai.com/analytics": "Call/usage analytics dashboards",
+  "docs.retellai.com/reliability/debug-call-disconnect": "Troubleshooting a failing call — already invested",
+};
+
+function nodeColor(n) {
+  if (n.pseudo === "booked") return COL.booked;
+  if (n.pseudo === "app") return COL.dashboard; // handed to the product, not lost
+  if (n.pseudo === "lost") return S.mode === "event" ? "#8e93a6" : COL.lost;
+  if (n.pseudo === "start") return "#b8bdcc";
+  if (S.colorby === "prop") return COL[n.other || n.prop];
+  if (S.colorby === "dwell") return seqColor((n.visits ? n.dwell / n.visits : 0) / maxDwellMean());
+  return gravColor(n.other ? n.gMean : model.g[n.ix]);
+}
+
+// the scope switch only means something when the data carries both populations
+const SCOPES = DATA.inclusion ? [["www", "Site-touching"], ["all", "All sessions"]] : [];
+for (const [k, lbl] of SCOPES) {
+  const b = document.createElement("button");
+  b.className = "act" + (S.scope === k ? " on" : ""); b.textContent = lbl;
+  b.onclick = () => { S.scope = k;
+    [...$("scopeBtns").children].forEach((c, i) => c.classList.toggle("on", SCOPES[i][0] === k));
+    refit(); heat = Math.max(heat, 0.6); };
+  $("scopeBtns").appendChild(b);
+}
+
+// Warehouse dataset: the absorbing state is "ended on the demo-request form",
+// because submission and booking are not observable at that grain. Visitor-fate
+// semantics need a per-visitor outcome, which this source has none of — so the
+// mode toggle collapses to the one honest reading instead of offering a fake choice.
+const MODES = REACH
+  ? [["event", "Reached the form"]]
+  : [["event", "Booking event"], ["fate", "Visitor fate"]];
+const modeNotes = {
+  event: REACH
+    ? "Gravity = P(a walk from this page ends on the demo-request form). Whether anyone submitted it, or booked, is not observable in this source — so this measures reach, not conversion."
+    : "Strict semantics: booking only happens at the gate (the demo-request form). Green flows from the gate alone; every other session end is a neutral EXIT. Gravity = P(this walk books).",
+  fate: "Loose semantics: every session end absorbs into the visitor's eventual outcome, so BOOKED edges appear from pages you cannot book on. Gravity = P(this page's visitor is the booking kind).",
+};
+for (const [k, lbl] of MODES) {
+  const b = document.createElement("button");
+  b.className = "act" + (S.mode === k ? " on" : ""); b.textContent = lbl;
+  b.onclick = () => { S.mode = k;
+    [...$("modeBtns").children].forEach((c, i) => c.classList.toggle("on", MODES[i][0] === k));
+    refit(); heat = Math.max(heat, 0.6); };
+  $("modeBtns").appendChild(b);
+}
+
+const CBS = [["gravity", "Gravity"], ["prop", "Property"], ["dwell", "Dwell"]];
+const cbNotes = {
+  gravity: REACH
+    ? "P(a walk from this page ends on the demo-request form). Diverging around the base rate — blue pulls toward the form, red toward leaving."
+    : "P(a walk from this page ends in a booked meeting). Diverging around the base rate — blue pulls toward booked, red toward lost.",
+  prop: REACH
+    ? "All one property here — the marketing site. (The ICP graph is where three properties weave together.)"
+    : "Which property the page belongs to. Journeys weave through all three.",
+  dwell: REACH
+    ? "Mean seconds per visit, derived from gaps between consecutive pageviews — where attention actually pools."
+    : "Mean seconds spent per visit — where attention actually pools.",
+};
+for (const [k, lbl] of CBS) {
+  const b = document.createElement("button");
+  b.className = "act" + (S.colorby === k ? " on" : ""); b.textContent = lbl;
+  b.onclick = () => { S.colorby = k;
+    [...$("colorby").children].forEach((c, i) => c.classList.toggle("on", CBS[i][0] === k));
+    renderLegend(); };
+  $("colorby").appendChild(b);
+}
+
+function renderLegend() {
+  $("cbnote").textContent = cbNotes[S.colorby];
+  const L = $("legend"); L.innerHTML = "";
+  const item = (color, label) => {
+    const d = document.createElement("div"); d.className = "item";
+    d.innerHTML = `<span class="sw" style="background:${color}"></span><span>${label}</span>`;
+    L.appendChild(d);
+  };
+  if (S.colorby === "prop") {
+    item(COL.www, "www — marketing site");
+    item(COL.dashboard, "dashboard — the product");
+    item(COL.docs, "docs");
+  } else if (S.colorby === "gravity") {
+    const cap = document.createElement("div");
+    cap.style.cssText = "font-size:10px;color:var(--dim);margin-bottom:2px";
+    cap.textContent = "height = gravity rank · colour = gravity";
+    L.appendChild(cap);
+    const bar = document.createElement("div"); bar.className = "bar";
+    bar.style.background = `linear-gradient(90deg, ${COL.lo}, ${COL.mid}, ${COL.hi})`;
+    L.appendChild(bar);
+    const e = document.createElement("div"); e.className = "ends";
+    e.innerHTML = `<span>${(gLo * 100).toFixed(0)}%</span><span>base ${(BASE * 100).toFixed(0)}%</span><span>${(gHi * 100).toFixed(0)}%</span>`;
+    L.appendChild(e);
+  } else {
+    const bar = document.createElement("div"); bar.className = "bar";
+    bar.style.background = `linear-gradient(90deg, ${SEQ[0]}, ${SEQ[SEQ.length - 1]})`;
+    L.appendChild(bar);
+    const e = document.createElement("div"); e.className = "ends";
+    e.innerHTML = `<span>0 s/visit</span><span>${maxDwellMean().toFixed(0)} s/visit</span>`;
+    L.appendChild(e);
+  }
+  item(COL.booked, REACH ? "REACHES FORM — session ended on the demo-request form (submission not observable)"
+                         : "BOOKED — meeting scheduled (held-rate not measured)");
+  if (S.mode === "event") item("#8e93a6", REACH ? "EXIT — left the site elsewhere" : "EXIT — left the site without booking");
+  else item(COL.lost, "LOST — visitor never scheduled");
+  if (!REACH) item(COL.dashboard, "→ APP — ends inside the product (handed off, not lost)");
+  const g = document.createElement("div"); g.className = "item";
+  g.innerHTML = `<span class="sw" style="background:transparent;border:1.5px dashed rgba(12,163,12,.8)"></span>` +
+    `<span>gate — the demo-request form; ${REACH ? "the absorbing state itself" : "every booking passes through it"}</span>`;
+  L.appendChild(g);
+  const o = document.createElement("div"); o.className = "item";
+  o.innerHTML = `<span class="sw" style="background:rgba(142,147,166,.35);border-style:dashed"></span>` +
+    `<span>(other …) — the long tail, folded per property</span>`;
+  L.appendChild(o);
+}
+
+function bindRange(id, valId, key, fmt, after) {
+  const el = $(id);
+  el.value = S[key];
+  const show = () => $(valId).textContent = fmt(S[key]);
+  el.oninput = () => { S[key] = +el.value; show(); after && after(); };
+  show();
+}
+
+function refit() {
+  buildCounts(S.mode);
+  LOST.id = S.mode === "event" ? "EXIT" : "LOST";
+  solve(S.kappa);
+  buildGraphEdges(S.mode); // after solve: the "(other)" aggregates average model.g
+  const gs = pages.map((p, i) => model.g[i]);
+  gLo = Math.min(...gs); gHi = Math.max(...gs);
+  // fate-axis targets by RANK: evenly spaced top-to-bottom, ties broken by g
+  const ranked = [];
+  for (let i = 0; i < N; i++) if (!nodes[i].folded) ranked.push([nodes[i], model.g[i]]);
+  for (const o of OTHERS) if (o.count) ranked.push([o, o.gMean]);
+  ranked.sort((a, b) => a[1] - b[1]);
+  ranked.forEach(([n], k) => { n.fateR = ranked.length > 1 ? 0.03 + 0.94 * k / (ranked.length - 1) : 0.5; });
+  $("modenote").textContent = modeNotes[S.mode];
+  const inc = DATA.inclusion;
+  // the warehouse dataset is marketing-site-only by construction, so the
+  // app/www scope split (and its note) has nothing to say there
+  $("scopenote").innerHTML = !inc
+    ? `Marketing-site sessions only — this source carries no product-side journeys, so there is no scope to switch.`
+    : S.scope === "www"
+    ? `The funnel's real denominator: the <b>${inc.sessionsWww}</b> sessions that touch the marketing site at least once. ` +
+      `Excluded: ${Object.entries(inc.excluded).map(([k, v]) => `${v} ${k}`).join(", ")}.`
+    : `All <b>${inc.sessionsAll}</b> sessions, including ${inc.excluded["pure app"] || 0} that never leave the product — ` +
+      `they can't reach the form, so they drag the rate down without being failures.`;
+  $("lowLabel").textContent = REACH ? "Lowest pull — the site's dead ends"
+    : S.mode === "event" ? "Lowest pull — the product lane" : "Lowest pull — attention sinks";
+  $("lowNote").textContent = REACH
+    ? "Pages a walk rarely leaves for the form. With 235k sessions the ranking is well-powered — the κ slider matters far less here than on the 53-lead chain."
+    : S.mode === "event"
+    ? "Low here ≠ bad page: product-usage sessions rarely end at the form. Compare with Visitor fate — these same pages predict who books."
+    : "High dwell + low gravity = the site's swamps: time goes in, bookings don't come out.";
+  $("modelnote").innerHTML =
+    `Base rate (session-weighted): <b>${(BASE * 100).toFixed(1)}%</b> · ` +
+    `model start-of-session: <b>${(model.startG * 100).toFixed(1)}%</b><br>` +
+    `Gravity range ${(gLo * 100).toFixed(0)}–${(gHi * 100).toFixed(0)}%`;
+  renderLegend(); renderRanks(); renderDetail(); renderTable();
+}
+
+bindRange("k", "v_k", "kappa", v => v.toFixed(1), refit);
+bindRange("e", "v_e", "minEdge", v => "≥ " + v);
+bindRange("mv", "v_mv", "minVisits", v => "≥ " + v, () => renderRanks());
+bindRange("mm", "v_mm", "mapMin", v => "≥ " + v, () => { refit(); heat = Math.max(heat, 0.5); });
+$("fate").checked = S.fateLayout;
+$("fate").onchange = e => { S.fateLayout = e.target.checked; heat = Math.max(heat, 0.6); };
+$("loops").checked = S.loops; $("loops").onchange = e => S.loops = e.target.checked;
+$("labels").checked = S.labels; $("labels").onchange = e => S.labels = e.target.checked;
+$("toggle").onclick = () => { const u = $("ui"); u.classList.toggle("collapsed");
+  $("toggle").textContent = u.classList.contains("collapsed") ? "show" : "hide"; };
+$("reheat").onclick = () => {
+  for (const n of nodes) if (n.pin && !n.anchor) n.pin = false; // release user pins
+  heat = 1;
+};
+
+/* ---------- ranked lists ---------- */
+let selected = -1;
+function rankRow(container, i) {
+  const d = document.createElement("div");
+  d.className = "r" + (i === selected ? " sel" : "");
+  d.innerHTML = `<span class="p">${pages[i].id}</span>` +
+    `<span class="v">${(model.g[i] * 100).toFixed(0)}%</span>`;
+  d.title = `${pageVisits(pages[i])} visits · gravity ${(model.g[i] * 100).toFixed(1)}% vs base ${(BASE * 100).toFixed(1)}%`;
+  d.onclick = () => select(i);
+  container.appendChild(d);
+}
+function renderRanks() {
+  const eligible = pages.map((p, i) => i).filter(i => pageVisits(pages[i]) >= S.minVisits);
+  const byG = [...eligible].sort((a, b) => model.g[b] - model.g[a]);
+  const top = $("topRank"); top.innerHTML = "";
+  byG.slice(0, 8).forEach(i => rankRow(top, i));
+  const low = $("lowRank"); low.innerHTML = "";
+  byG.slice(-8).reverse().forEach(i => rankRow(low, i));
+}
+
+/* ---------- detail panel ---------- */
+function fmtTime(s) { return s >= 90 ? (s / 60).toFixed(1) + " min" : s.toFixed(0) + " s"; }
+function select(i) { selected = i; renderDetail(); renderRanks(); }
+$("dclose").onclick = () => { selected = -1; renderDetail(); renderRanks(); };
+
+function renderDetail() {
+  const D = $("detail");
+  if (selected < 0 || selected >= N) { D.style.display = "none"; return; }
+  D.style.display = "block";
+  const p = pages[selected], i = selected;
+  $("dprop").textContent = p.prop + (GATES.has(p.id) ? " · GATE — the demo-request form" : "");
+  $("dtitle").textContent = p.id;
+  const emp = p.visitsBooked + p.visitsLost ? p.visitsBooked / (p.visitsBooked + p.visitsLost) : 0;
+  const rows = [
+    ["Visits / unique visitors", `${pageVisits(p)} / ${p.visitors}`],
+    ["Session entries here", p.entries],
+    ["Mean dwell per visit", fmtTime(p.visits ? p.dwell / p.visits : 0)],
+    ["Gravity — P(ends booked)", (model.g[i] * 100).toFixed(1) + "%"],
+    ["vs base rate", (model.g[i] >= BASE ? "+" : "") + ((model.g[i] - BASE) * 100).toFixed(1) + " pp"],
+    ["Empirical (visits by fate)", (emp * 100).toFixed(0) + "% booked"],
+    ["Expected remaining pages", model.steps[i].toFixed(1)],
+    ["Expected remaining time", fmtTime(model.time[i])],
+  ];
+  $("dstats").innerHTML = rows.map(r => `<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join("");
+  let extra = MEANING[p.id] ? `<div class="note" style="margin-top:8px">${MEANING[p.id]}</div>` : "";
+  if (GATES.has(p.id)) extra += `<div class="note">⚠ Some sessions that end here without booking reflect known form/scheduler failure modes — technical losses, not necessarily lost intent.</div>`;
+  $("dmeaning").innerHTML = extra;
+  // outgoing distribution
+  let T = outB[i] + outL[i];
+  for (const n of outTo[i].values()) T += n;
+  const outs = [...outTo[i]].map(([j, n]) => ({ label: pages[j].id, n, j }));
+  const exitLbl = S.mode === "event" ? "EXIT" : "LOST";
+  if (outB[i]) outs.push({ label: S.mode === "event" ? "→ BOOKED (books here)" : "→ BOOKED (session ends)", n: outB[i], j: -1 });
+  if (outL[i]) outs.push({ label: `→ ${exitLbl} (session ends)`, n: outL[i], j: -1 });
+  outs.sort((a, b) => b.n - a.n);
+  $("dedges").innerHTML = "";
+  for (const o of outs.slice(0, 12)) {
+    const d = document.createElement("div"); d.className = "edge";
+    d.innerHTML = `<span class="p">${o.label}</span><span class="n">${(o.n / T * 100).toFixed(0)}% · ${o.n}</span>` +
+      `<span class="ebar" style="width:${(o.n / T * 100).toFixed(1)}%"></span>`;
+    if (o.j >= 0) d.querySelector(".p").onclick = () => select(o.j);
+    $("dedges").appendChild(d);
+  }
+}
+
+/* ---------- full data table ---------- */
+let sortKey = "g", sortDir = -1;
+const tcols = [
+  ["id", "page", p => p.id],
+  ["prop", "prop", p => p.prop],
+  ["visits", "visits", p => pageVisits(p)],
+  ["visitors", "visitors", p => p.visitors],
+  ["dwell", "s/visit", p => p.visits ? p.dwell / p.visits : 0],
+  ["g", "gravity", (p, i) => model.g[i]],
+  ["steps", "exp. pages", (p, i) => model.steps[i]],
+  ["time", "exp. time s", (p, i) => model.time[i]],
+];
+function renderTable() {
+  const T = $("bigTable");
+  const ix = pages.map((p, i) => i);
+  const col = tcols.find(c => c[0] === sortKey);
+  ix.sort((a, b) => {
+    const va = col[2](pages[a], a), vb = col[2](pages[b], b);
+    return (va < vb ? -1 : va > vb ? 1 : 0) * sortDir;
+  });
+  T.innerHTML = "<tr>" + tcols.map(c =>
+    `<th data-k="${c[0]}">${c[1]}${c[0] === sortKey ? (sortDir < 0 ? " ↓" : " ↑") : ""}</th>`).join("") + "</tr>" +
+    ix.map(i => { const p = pages[i]; return "<tr>" + tcols.map(c => {
+      let v = c[2](p, i);
+      if (c[0] === "g") v = (v * 100).toFixed(1) + "%";
+      else if (typeof v === "number") v = v.toFixed(v >= 100 ? 0 : 1);
+      return `<td>${v}</td>`; }).join("") + "</tr>"; }).join("");
+  T.querySelectorAll("th").forEach(th => th.onclick = () => {
+    const k = th.dataset.k;
+    if (k === sortKey) sortDir *= -1; else { sortKey = k; sortDir = -1; }
+    renderTable();
+  });
+}
+$("tableBtn").onclick = () => { $("tableWrap").style.display = "block"; renderTable(); };
+$("tclose").onclick = () => $("tableWrap").style.display = "none";
+
+/* ---------- canvas render ---------- */
+const cv = $("c"), ctx = cv.getContext("2d");
+let dpr = 1, cam = { x: 0, y: 0, z: 1 };
+function resize() {
+  dpr = Math.min(2, devicePixelRatio || 1);
+  W = innerWidth; H = innerHeight;
+  cv.width = W * dpr; cv.height = H * dpr;
+  pinAnchors();
+}
+addEventListener("resize", resize); resize();
+
+const toScreen = (x, y) => [(x - cam.x) * cam.z + (W - PANEL) / 2, (y - cam.y) * cam.z + H / 2];
+const toWorld = (sx, sy) => [(sx - (W - PANEL) / 2) / cam.z + cam.x, (sy - H / 2) / cam.z + cam.y];
+
+let t0 = performance.now();
+function draw(now) {
+  const t = (now - t0) / 1000;
+  if (cv.width === 0 && innerWidth > 0) resize(); // pane was hidden at boot
+  for (let s = 0; s < 3; s++) tick();
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+
+  // focus: hovering or selecting a node dims everything outside its neighborhood
+  const focusIx = (hover >= 0 && hover < N) ? hover : (selected >= 0 ? selected : -1);
+  const inFocus = ix => focusIx < 0 || ix === focusIx || neighbors[focusIx].has(ix);
+  const hidden = ix => nodes[ix].folded || (nodes[ix].other && !nodes[ix].count);
+
+  // edges
+  for (const e of allEdges) {
+    if (e.n < S.minEdge) continue;
+    if (hidden(e.a) || hidden(e.b)) continue;
+    const a = nodes[e.a], b = nodes[e.b];
+    const dim = !(inFocus(e.a) && inFocus(e.b)) ||
+                (focusIx >= 0 && e.a !== focusIx && e.b !== focusIx);
+    if (e.self) {
+      if (!S.loops || dim) continue;
+      const [sx, sy] = toScreen(a.x, a.y);
+      ctx.beginPath();
+      ctx.arc(sx + (a.r + 5) * cam.z, sy - (a.r + 5) * cam.z, (4 + 3 * e.n / maxEdge) * cam.z, 0, 7);
+      ctx.strokeStyle = "rgba(142,147,166,.30)"; ctx.lineWidth = 1;
+      ctx.stroke();
+      continue;
+    }
+    const [x1, y1] = toScreen(a.x, a.y), [x2, y2] = toScreen(b.x, b.y);
+    const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+    const dx = x2 - x1, dy = y2 - y1, d = Math.hypot(dx, dy) || 1;
+    const off = Math.min(40, d * 0.14);
+    const cxp = mx - dy / d * off, cyp = my + dx / d * off;
+    const wgt = Math.sqrt(e.n / maxEdge); // sqrt: mid-traffic edges stay visible
+    let col = "142,147,166";
+    if (nodes[e.b].pseudo === "booked" && (S.mode === "fate" || nodes[e.a].gate)) col = "12,163,12";
+    else if (nodes[e.b].pseudo === "lost" && S.mode === "fate") col = "208,59,59";
+    let alpha = 0.07 + 0.38 * wgt;
+    if (dim) alpha *= 0.12;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1); ctx.quadraticCurveTo(cxp, cyp, x2, y2);
+    ctx.strokeStyle = `rgba(${col},${alpha})`;
+    ctx.lineWidth = (0.6 + 3.2 * wgt) * cam.z;
+    ctx.stroke();
+    if (dim) continue; // no particles on dimmed edges
+    const k = Math.min(5, 1 + Math.floor(e.n / 12));
+    for (let p = 0; p < k; p++) {
+      const u = ((t * (0.10 + 0.16 * wgt) + p / k + e.a * 0.137) % 1);
+      const ix = (1 - u) * (1 - u) * x1 + 2 * (1 - u) * u * cxp + u * u * x2;
+      const iy = (1 - u) * (1 - u) * y1 + 2 * (1 - u) * u * cyp + u * u * y2;
+      ctx.beginPath();
+      ctx.arc(ix, iy, Math.max(0.8, 1.3 * cam.z), 0, 7);
+      ctx.fillStyle = `rgba(${col},${0.35 + 0.4 * wgt})`;
+      ctx.fill();
+    }
+  }
+
+  // nodes
+  ctx.textAlign = "left"; ctx.textBaseline = "middle";
+  const labelSet = new Set();
+  if (S.labels) {
+    [...pages.keys()].sort((a, b) => pageVisits(pages[b]) - pageVisits(pages[a])).slice(0, 10)
+      .forEach(i => labelSet.add(i));
+  }
+  if (selected >= 0) labelSet.add(selected);
+  if (hover >= 0 && hover < N) labelSet.add(hover);
+  for (const n of nodes) if (n.gate) labelSet.add(n.ix);
+
+  const labelQueue = [];
+  for (const n of nodes) {
+    if (!n.pseudo && hidden(n.ix)) continue;
+    // an absorbing state nothing reaches is noise, not information — a dataset
+    // with no product-side journeys should not show an empty APP anchor
+    if (n.anchor && n.absorbed === 0) continue;
+    const [sx, sy] = toScreen(n.x, n.y);
+    const dimmed = !n.pseudo && !inFocus(n.ix);
+    const r = n.r * cam.z;
+    ctx.globalAlpha = dimmed ? 0.25 : n.other ? 0.8 : 1;
+    ctx.beginPath(); ctx.arc(sx, sy, r, 0, 7);
+    ctx.fillStyle = nodeColor(n);
+    ctx.fill();
+    ctx.lineWidth = 1;
+    if (n.other) { ctx.setLineDash([3, 2.5]); ctx.strokeStyle = "rgba(255,255,255,.45)"; }
+    else ctx.strokeStyle = "rgba(255,255,255,.22)"; // 1px ring separates overlapping marks
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+    if (n.pin && !n.anchor) { // user-pinned: a small pin head at the node's shoulder
+      ctx.beginPath(); ctx.arc(sx + r * 0.8, sy - r * 0.8, 2.6, 0, 7);
+      ctx.fillStyle = "#e6e8ef"; ctx.fill();
+      ctx.strokeStyle = "rgba(11,13,18,.9)"; ctx.lineWidth = 1; ctx.stroke();
+    }
+    if (n.gate) { // the doorway: a dashed portal ring in BOOKED's green
+      ctx.globalAlpha = dimmed ? 0.3 : 1;
+      ctx.beginPath(); ctx.arc(sx, sy, r + 5 * cam.z, 0, 7);
+      ctx.setLineDash([4 * cam.z, 3 * cam.z]);
+      ctx.strokeStyle = "rgba(12,163,12,.75)"; ctx.lineWidth = 1.6;
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.font = "600 9px ui-sans-serif, system-ui, sans-serif";
+      ctx.fillStyle = "rgba(12,163,12,.9)";
+      ctx.textAlign = "center";
+      ctx.fillText("GATE", sx, sy + r + 13 * cam.z);
+      ctx.textAlign = "left";
+      ctx.globalAlpha = 1;
+    }
+    if (n.ix === selected || n.ix === hover) {
+      ctx.beginPath(); ctx.arc(sx, sy, r + 3.5, 0, 7);
+      ctx.strokeStyle = "rgba(230,232,239,.85)"; ctx.lineWidth = 1.5; ctx.stroke();
+    }
+    if (n.pseudo) {
+      ctx.font = "600 11px ui-sans-serif, system-ui, sans-serif";
+      ctx.strokeStyle = "rgba(11,13,18,.9)"; ctx.lineWidth = 3; ctx.lineJoin = "round";
+      ctx.fillStyle = "#e6e8ef";
+      ctx.textAlign = "center";
+      const lbl = n.pseudo === "start" ? `${n.id} · ${n.entries || 0}` : n.id;
+      ctx.strokeText(lbl, sx, sy - r - 9);
+      ctx.fillText(lbl, sx, sy - r - 9);
+      if (n.pseudo && n.pseudo !== "start" && n.absorbed != null) {
+        ctx.font = "10px ui-sans-serif, system-ui, sans-serif";
+        ctx.fillStyle = "rgba(230,232,239,.62)";
+        const pct = (n.absorbed / totEnds() * 100).toFixed(0);
+        ctx.strokeText(`${n.absorbed} · ${pct}%`, sx, sy + r + 13);
+        ctx.fillText(`${n.absorbed} · ${pct}%`, sx, sy + r + 13);
+      }
+      ctx.textAlign = "left";
+    } else if ((labelSet.has(n.ix) || n.other) && !dimmed) {
+      labelQueue.push({ n, sx, sy, r });
+    }
+  }
+  // labels drawn last, greedily nudged apart so they never stack
+  labelQueue.sort((a, b) => a.sy - b.sy);
+  const placed = [];
+  ctx.font = "10.5px ui-sans-serif, system-ui, sans-serif";
+  for (const L of labelQueue) {
+    const raw = label(L.n);
+    const lbl = raw.length > 34 ? raw.slice(0, 33) + "…" : raw;
+    const wpx = ctx.measureText(lbl).width;
+    let lx = L.sx + L.r + 5, ly = L.sy;
+    for (let guard = 0; guard < 6; guard++) {
+      const clash = placed.find(p => Math.abs(p.ly - ly) < 12 && lx < p.lx + p.w && p.lx < lx + wpx);
+      if (!clash) break;
+      ly = clash.ly + 12;
+    }
+    placed.push({ lx, ly, w: wpx });
+    ctx.strokeStyle = "rgba(11,13,18,.85)"; ctx.lineWidth = 3; ctx.lineJoin = "round";
+    ctx.strokeText(lbl, lx, ly);
+    ctx.fillStyle = "rgba(230,232,239,.80)";
+    ctx.fillText(lbl, lx, ly);
+  }
+  requestAnimationFrame(draw);
+}
+
+/* ---------- interaction: hover / drag-to-pin / pan / zoom ---------- */
+let hover = -1, dragNode = null, dragMoved = false, dsx = 0, dsy = 0,
+    panning = false, px = 0, py = 0;
+function hit(sx, sy) {
+  const [wx, wy] = toWorld(sx, sy);
+  let best = -1, bd = 1e9;
+  for (const n of nodes) {
+    if (n.folded || (n.other && !n.count)) continue;
+    const d = Math.hypot(n.x - wx, n.y - wy);
+    if (d < Math.max(n.r + 4, 8) / 1 && d < bd) { bd = d; best = n.ix; }
+  }
+  return best;
+}
+cv.addEventListener("mousemove", ev => {
+  if (dragNode) {
+    if (!dragMoved && Math.hypot(ev.clientX - dsx, ev.clientY - dsy) > 4) dragMoved = true;
+    if (dragMoved) {
+      const [wx, wy] = toWorld(ev.clientX, ev.clientY);
+      dragNode.x = wx; dragNode.y = wy; dragNode.vx = dragNode.vy = 0;
+      heat = Math.max(heat, 0.25);
+    }
+    return;
+  }
+  if (panning) {
+    cam.x -= (ev.clientX - px) / cam.z; cam.y -= (ev.clientY - py) / cam.z;
+    px = ev.clientX; py = ev.clientY;
+    return;
+  }
+  hover = hit(ev.clientX, ev.clientY);
+  const tip = $("tip");
+  if (hover >= 0 && hover < N) {
+    const p = pages[hover];
+    tip.style.display = "block";
+    tip.style.left = Math.min(W - 310, ev.clientX + 14) + "px";
+    tip.style.top = (ev.clientY + 14) + "px";
+    tip.innerHTML = `<div class="t">${p.id}</div>` +
+      (MEANING[p.id] ? `<div class="d" style="margin-bottom:3px">${MEANING[p.id]}</div>` : "") +
+      `<div class="d">${pageVisits(p)} visits · ${p.visitors} visitors · ${fmtTime(p.visits ? p.dwell / p.visits : 0)}/visit<br>` +
+      `gravity ${(model.g[hover] * 100).toFixed(1)}% (base ${(BASE * 100).toFixed(1)}%) · ` +
+      `${model.steps[hover].toFixed(1)} pages, ${fmtTime(model.time[hover])} to go</div>`;
+  } else if (hover >= 0 && nodes[hover].other) {
+    const n = nodes[hover];
+    tip.style.display = "block";
+    tip.style.left = Math.min(W - 310, ev.clientX + 14) + "px";
+    tip.style.top = (ev.clientY + 14) + "px";
+    tip.innerHTML = `<div class="t">${n.id}</div><div class="d">` +
+      `${n.count} low-traffic ${n.other} pages folded together (&lt; ${S.mapMin} visits each)<br>` +
+      `${n.visits} visits combined · mean gravity ${(n.gMean * 100).toFixed(1)}%</div>`;
+  } else if (hover >= 0 && nodes[hover].other) {
+    const n = nodes[hover];
+    tip.style.display = "block";
+    tip.style.left = Math.min(W - 310, ev.clientX + 14) + "px";
+    tip.style.top = (ev.clientY + 14) + "px";
+    tip.innerHTML = `<div class="t">${n.id}</div><div class="d">` +
+      `${n.count} pages under the map threshold, folded into one<br>` +
+      `${n.visits} visits total · mean gravity ${(n.gMean * 100).toFixed(1)}%<br>` +
+      `Lower "min visits (map)" to unfold them.</div>`;
+  } else if (hover >= 0) {
+    const n = nodes[hover];
+    tip.style.display = "block";
+    tip.style.left = Math.min(W - 310, ev.clientX + 14) + "px";
+    tip.style.top = (ev.clientY + 14) + "px";
+    tip.innerHTML = `<div class="t">${n.pseudo === "start" ? n.id : n.id}</div><div class="d">` +
+      (n.pseudo === "start"
+          ? `${n.entries || 0} sessions start here · model P(booked) ${((n.gMean ?? BASE) * 100).toFixed(1)}%<br>` +
+            `<em>Self-reported at form fill — under-attributes several real channels.</em>`
+        : n.pseudo === "booked" ? (S.mode === "event"
+            ? `${totB} bookings — all through the gate. "Booked" = meeting scheduled (held-rate not measured)`
+            : `${totB} session-ends by visitors who scheduled a meeting`)
+        : n.pseudo === "app"
+          ? `${totApp} sessions end inside the product — handed to the app, not lost. ` +
+            `They are counted as non-bookings by the model, but they are a different fate.`
+        : (S.mode === "event"
+            ? `${totL - totApp} session-ends that left without booking`
+            : `${totL - totApp} session-ends by visitors who never scheduled`)) + `</div>`;
+  } else tip.style.display = "none";
+});
+cv.addEventListener("mousedown", ev => {
+  const h = hit(ev.clientX, ev.clientY);
+  if (h >= 0 && !nodes[h].anchor) {
+    dragNode = nodes[h]; dragMoved = false; dsx = ev.clientX; dsy = ev.clientY;
+  } else if (h < 0) {
+    panning = true; px = ev.clientX; py = ev.clientY; cv.classList.add("dragging");
+  }
+});
+addEventListener("mouseup", ev => {
+  if (dragNode) {
+    if (dragMoved) dragNode.pin = true; // dropping a node pins it — the map is yours
+    else if (dragNode.ix < N) select(dragNode.ix);
+    dragNode = null;
+  } else {
+    const h = hit(ev.clientX, ev.clientY);
+    if (h >= 0 && h < N && (!panning || Math.hypot(ev.clientX - px, ev.clientY - py) < 3))
+      select(h); // covers anchored pages like the gate
+  }
+  panning = false; cv.classList.remove("dragging");
+});
+cv.addEventListener("dblclick", ev => {
+  const h = hit(ev.clientX, ev.clientY);
+  if (h >= 0 && nodes[h].pin && !nodes[h].anchor) {
+    nodes[h].pin = false;
+    heat = Math.max(heat, 0.3);
+  }
+});
+cv.addEventListener("wheel", ev => {
+  ev.preventDefault();
+  const f = Math.exp(-ev.deltaY * 0.0012);
+  const [wx, wy] = toWorld(ev.clientX, ev.clientY);
+  cam.z = Math.max(0.25, Math.min(4, cam.z * f));
+  const [nx, ny] = toWorld(ev.clientX, ev.clientY);
+  cam.x += wx - nx; cam.y += wy - ny;
+}, { passive: false });
+
+/* ---------- boot ---------- */
+if (REACH) {
+  document.title = "Journey Gravity — the warehouse chain (reach, not conversion)";
+  $("h1").textContent = "Journey Gravity — warehouse";
+  $("topLabel").textContent = "Highest pull toward the form";
+  const sl = $("siblink");
+  if (sl) { sl.href = "index.html"; sl.textContent = "ICP graph"; }
+  $("datanote").innerHTML =
+    `<b>${DATA.meta.sessions.toLocaleString()} marketing-site sessions</b> · ` +
+    `${DATA.meta.pageviews.toLocaleString()} pageviews · ` +
+    `${DATA.meta.date_range[0]} → ${DATA.meta.date_range[1]}.<br>` +
+    `Every session in the analytics warehouse — not a sample. Aggregate only: paths and ` +
+    `counts, reduced in-warehouse; no identifier is read or emitted. ` +
+    `<b>Gravity here is P(reaches the demo-request form)</b>, not P(books) — submissions ` +
+    `are not observable in this source, so the <a href="index.html" style="color:var(--accent)">ICP ` +
+    `graph</a> remains the only view with real booking outcomes. Dwell is <b>derived</b> ` +
+    `from gaps between consecutive pageviews (clamped at 30 min); the source populates its ` +
+    `own engagement field on ~1% of pageviews. Marketing-site host only; ` +
+    `<code>/careers</code> + <code>/about-us</code> and locale prefixes normalised out. ` +
+    `Window starts when the export was connected and cannot be backfilled.`;
+} else {
+$("datanote").innerHTML =
+  `${DATA.meta.visitors} ICP visitors (${DATA.meta.visitors_booked} booked) · ` +
+  `${DATA.meta.sessions} sessions · ${DATA.meta.pageviews} pageviews · ` +
+  `${DATA.meta.date_range[0]} → ${DATA.meta.date_range[1]}.<br>` +
+  `Anonymized aggregate — page paths and counts only; no identities. ` +
+  `Every session end feeds the visitor's eventual fate (booked / lost) into the chain.`;
+}
+refit();
+pinAnchors(); // origin nodes need their volumes before they can be stacked by size
+$("stats").textContent = `${N} pages · ${allEdges.length} transitions`;
+// pre-settle fully and start cold: the first paint is a still, formed map
+for (let i = 0; i < 1200; i++) tick();
+heat = 0.06;
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>

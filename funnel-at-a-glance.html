@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Website Funnel at a Glance</title>
+<style>
+  :root {
+    color-scheme: light;
+    --surface-1: #fcfcfb;
+    --page: #f9f9f7;
+    --ink-1: #0b0b0b;
+    --ink-2: #52514e;
+    --muted: #898781;
+    --grid: #e1e0d9;
+    --baseline: #c3c2b7;
+    --border: rgba(11,11,11,0.10);
+    --blue: #2a78d6;
+    --obs: #2a78d6;
+    --self: #eb6834;
+    --gray-bar: #b8b6ae;
+    --good: #006300;
+    --warn-ink: #a33d00;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --surface-1: #1a1a19;
+      --page: #0d0d0d;
+      --ink-1: #ffffff;
+      --ink-2: #c3c2b7;
+      --muted: #898781;
+      --grid: #2c2c2a;
+      --baseline: #383835;
+      --border: rgba(255,255,255,0.10);
+      --blue: #3987e5;
+      --obs: #3987e5;
+      --self: #d95926;
+      --gray-bar: #55534e;
+      --good: #0ca30c;
+      --warn-ink: #ec835a;
+    }
+  }
+  [data-theme="dark"] {
+    color-scheme: dark;
+    --surface-1: #1a1a19;
+    --page: #0d0d0d;
+    --ink-1: #ffffff;
+    --ink-2: #c3c2b7;
+    --muted: #898781;
+    --grid: #2c2c2a;
+    --baseline: #383835;
+    --border: rgba(255,255,255,0.10);
+    --blue: #3987e5;
+    --obs: #3987e5;
+    --self: #d95926;
+    --gray-bar: #55534e;
+    --good: #0ca30c;
+    --warn-ink: #ec835a;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    background: var(--page);
+    color: var(--ink-1);
+    font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 28px clamp(16px, 3vw, 44px) 48px;
+  }
+  header { max-width: 1280px; margin: 0 auto 18px; }
+  header h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+  header .sub { color: var(--ink-2); margin-top: 4px; font-size: 14px; }
+  header .sub b { color: var(--ink-1); font-weight: 600; }
+  .wrap { max-width: 1280px; margin: 0 auto; display: grid; gap: 14px; }
+
+  /* KPI row */
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  .tile {
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px 16px 12px;
+  }
+  .tile .v { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; }
+  .tile .v small { font-size: 16px; font-weight: 600; color: var(--ink-2); }
+  .tile .l { color: var(--ink-2); font-size: 13px; margin-top: 2px; }
+  .tile .n { color: var(--muted); font-size: 11.5px; margin-top: 6px; }
+
+  /* Panels */
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .panel {
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px 18px 14px; min-width: 0;
+  }
+  .panel h2 { font-size: 15px; font-weight: 700; letter-spacing: -0.005em; }
+  .panel .lede { color: var(--ink-2); font-size: 12.5px; margin: 3px 0 12px; }
+  .panel .win { color: var(--muted); font-size: 11px; margin-top: 10px; }
+
+  /* Horizontal bar rows */
+  .hrow { display: grid; grid-template-columns: 168px 1fr 74px; align-items: center; gap: 8px; margin: 5px 0; }
+  .hrow .name { font-size: 12.5px; color: var(--ink-2); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hrow .track { position: relative; height: 14px; }
+  .hrow .bar { position: absolute; inset: 0 auto 0 0; border-radius: 0 4px 4px 0; background: var(--blue); min-width: 2px; }
+  .hrow .bar.dim { background: var(--gray-bar); }
+  .hrow .val { font-size: 12px; color: var(--ink-1); font-variant-numeric: tabular-nums; }
+  .hrow .val small { color: var(--muted); }
+  .basemark { position: absolute; top: -3px; bottom: -3px; width: 0; border-left: 2px dashed var(--baseline); }
+
+  /* Column (cliff) chart */
+  .cols { display: flex; align-items: flex-end; gap: 10px; height: 170px; padding-top: 8px; }
+  .col { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; min-width: 0; }
+  .col .cv { font-size: 11.5px; color: var(--ink-1); margin-bottom: 3px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .col .cbar { width: 70%; max-width: 54px; background: var(--blue); border-radius: 4px 4px 0 0; min-height: 2px; }
+  .col .cl { font-size: 11px; color: var(--muted); margin-top: 5px; white-space: nowrap; }
+  .cliff-note { font-size: 12.5px; color: var(--ink-2); margin-top: 10px; }
+  .cliff-note b { color: var(--ink-1); }
+
+  /* Dumbbell */
+  .db { margin: 14px 0 6px; }
+  .dbrow { display: grid; grid-template-columns: 88px 1fr; gap: 10px; align-items: center; margin: 16px 0; }
+  .dbrow .name { font-size: 13px; color: var(--ink-1); font-weight: 600; text-align: right; }
+  .dbtrack { position: relative; height: 18px; }
+  .dbaxis { position: absolute; left: 0; right: 0; top: 50%; border-top: 1px solid var(--grid); }
+  .dbline { position: absolute; top: 50%; height: 3px; margin-top: -1.5px; background: var(--baseline); border-radius: 2px; }
+  .dbdot { position: absolute; top: 50%; width: 12px; height: 12px; border-radius: 50%; transform: translate(-50%, -50%); box-shadow: 0 0 0 2px var(--surface-1); }
+  .dbdot.obs { background: var(--obs); }
+  .dbdot.self { background: var(--self); }
+  .dblab { position: absolute; top: -14px; transform: translateX(-50%); font-size: 11.5px; color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .dblab.below { top: auto; bottom: -16px; }
+  .dbkey { display: flex; gap: 18px; font-size: 12px; color: var(--ink-2); margin-top: 4px; }
+  .dbkey .k { display: inline-flex; align-items: center; gap: 6px; }
+  .dbkey .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+
+  .callout { border-left: 3px solid var(--blue); padding: 6px 10px; background: color-mix(in srgb, var(--blue) 7%, var(--surface-1)); border-radius: 0 6px 6px 0; font-size: 12.5px; color: var(--ink-2); margin-top: 12px; }
+  .callout b { color: var(--ink-1); }
+
+  /* Caveats */
+  .caveats { font-size: 12.5px; color: var(--ink-2); }
+  .caveats ul { padding-left: 18px; display: grid; gap: 6px; margin-top: 8px; }
+  .caveats b { color: var(--ink-1); }
+
+  details { margin-top: 10px; }
+  summary { font-size: 11.5px; color: var(--muted); cursor: pointer; }
+  table { border-collapse: collapse; margin-top: 6px; font-size: 12px; }
+  th, td { text-align: left; padding: 3px 10px 3px 0; border-bottom: 1px solid var(--grid); font-variant-numeric: tabular-nums; }
+  th { color: var(--muted); font-weight: 600; }
+
+  /* Tooltip */
+  #tip { position: fixed; pointer-events: none; background: var(--ink-1); color: var(--page);
+    font-size: 12px; padding: 5px 9px; border-radius: 6px; opacity: 0; transition: opacity .08s; z-index: 10; max-width: 260px; }
+
+  @media (max-width: 980px) {
+    .kpis { grid-template-columns: repeat(2, 1fr); }
+    .grid2 { grid-template-columns: 1fr; }
+    .hrow { grid-template-columns: 130px 1fr 70px; }
+  }
+  @media print {
+    body { padding: 10px; }
+    .panel, .tile { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Website funnel — at a glance</h1>
+  <div class="sub">The funnel isn't leaky so much as <b>diluted</b>: 90% of sessions are one page and gone, and the same site converts
+    <b>1.5%</b> of all sessions, <b>2.5%</b> of identified-company sessions, and <b>42%</b> of ICP-lead sessions — the number depends on who you count.
+    <span style="color:var(--muted)">· All-hands, Aug 14 2026 · companion to the journey Sankey</span></div>
+</header>
+
+<div class="wrap">
+
+  <!-- KPI row -->
+  <div class="kpis">
+    <div class="tile">
+      <div class="v">81.0k</div>
+      <div class="l">unique visitors in 10 days (marketing site)</div>
+      <div class="n">113.2k sessions · to Aug 4</div>
+    </div>
+    <div class="tile">
+      <div class="v">1.52<small>%</small></div>
+      <div class="l">of all sessions reach the sales form</div>
+      <div class="n">3,587 of 235,218 sessions · Jul 19 – Aug 11</div>
+    </div>
+    <div class="tile">
+      <div class="v">63.5<small>%</small> <span style="color:var(--muted);font-size:16px">→</span> 56<small>%</small></div>
+      <div class="l">of form submissions book · keep the meeting</div>
+      <div class="n">1,133 submissions → 720 booked → 633 kept · Jul 8 – Aug 3</div>
+    </div>
+    <div class="tile">
+      <div class="v">42<small>%</small></div>
+      <div class="l">of ICP-lead marketing sessions end booked</div>
+      <div class="n">41 of 97 sessions, 53-lead cohort · Jun 1 – Jul 20</div>
+    </div>
+  </div>
+
+  <!-- Row 1: stage funnel + cliff -->
+  <div class="grid2">
+    <div class="panel">
+      <h2>Stage by stage: ~79k sessions/week become ~187 booked meetings/week</h2>
+      <div class="lede">Weekly rates. Each stage is measured on its own population — this is not one divisible chain.</div>
+      <div id="stages"></div>
+      <div class="win">Sources: analytics (sessions, demo), site click tracking (signup intent), form + scheduler archives (submit → kept). Windows: 10d / 14d / 27d, normalized to per-week.</div>
+      <details><summary>data table</summary><table id="stages-t"></table></details>
+    </div>
+
+    <div class="panel">
+      <h2>90% of sessions never see a second page</h2>
+      <div class="lede">Share of sessions still browsing at each page of their visit — the funnel is one wide step, then a cliff.</div>
+      <div class="cols" id="cliff"></div>
+      <div class="cliff-note"><b>202k of 235k sessions end on page 1.</b> Everything the site wants to say has to survive that first page.</div>
+      <div class="win">235,218 marketing-site sessions · Jul 19 – Aug 11 · careers &amp; about-us excluded</div>
+      <details><summary>data table</summary><table id="cliff-t"></table></details>
+    </div>
+  </div>
+
+  <!-- Row 2: gravity + attribution -->
+  <div class="grid2">
+    <div class="panel">
+      <h2>Industry &amp; feature pages walk visitors to the form at 2–3× the site rate</h2>
+      <div class="lede">P(session reaches the sales form) from each page, modeled over every observed page-to-page transition. Dashed line = site average, 1.5%.</div>
+      <div id="gravity"></div>
+      <div class="callout">The blog's biggest pages walk <b>almost no one</b> to the form (0.0–0.2%) — they draw a different crowd, not a weaker version of this one.</div>
+      <div class="win">Same 235k-session dataset · form page itself excluded (mechanical 71%)</div>
+      <details><summary>data table</summary><table id="gravity-t"></table></details>
+    </div>
+
+    <div class="panel">
+      <h2>Our best-converting channel is nearly invisible to analytics</h2>
+      <div class="lede">Share of leads by channel: what analytics observes on the form page vs. what 1,167 leads self-report at submission.</div>
+      <div class="db" id="dumbbell"></div>
+      <div class="dbkey">
+        <span class="k"><span class="dot" style="background:var(--obs)"></span> observed by analytics</span>
+        <span class="k"><span class="dot" style="background:var(--self)"></span> self-reported by leads</span>
+      </div>
+      <div class="callout"><b>ChatGPT: 32% of leads, 71% booking rate</b> — the highest of any channel — yet analytics attributes it 3.4% and files the rest under Direct (54%). A channel budget built on observed source alone under-funds our best channel.</div>
+      <div class="win">Observed: analytics, form page · Self-reported: form field, n = 1,167 · Google corroborates (28.3% vs 30.9%), so the gap is real, not noise</div>
+      <details><summary>data table</summary><table id="db-t"></table></details>
+    </div>
+  </div>
+
+  <!-- Row 3: deals + caveats -->
+  <div class="grid2">
+    <div class="panel">
+      <h2>The enterprise form mostly produces SMB deals</h2>
+      <div class="lede">Deals created from the 27-day kept-meeting cohort (241 deals from 233 contacts).</div>
+      <div id="deals"></div>
+      <div class="callout"><b>Enterprise is 5.4% — treat as a floor</b>, not a verdict: enterprise cycles outlast the 27-day window. Large accounts also self-serve on /pricing at 3.4× volume rather than routing to the enterprise track.</div>
+      <div class="win">Form → meeting → CRM join, Jul 8 – Aug 3 · deal amounts set on only 5 of 241 deals, so no $ pipeline number is quotable yet</div>
+      <details><summary>data table</summary><table id="deals-t"></table></details>
+    </div>
+
+    <div class="panel">
+      <h2>How to read these numbers</h2>
+      <div class="caveats">
+        <ul>
+          <li><b>Marketing site only.</b> The same analytics property also collects the product app — unfiltered, www is 8.5% of pageviews. Every number here is filtered.</li>
+          <li><b>Stages are not one chain.</b> Each stage has its own population and window; dividing one stage by another manufactures a fake rate.</li>
+          <li><b>Analytics can't count conversions</b> — it sees ~10% of real form submissions (ad blockers, scheduler intercepts). Submissions and bookings here come from the form and scheduler archives, which are complete.</li>
+          <li><b>"% of visitors that are ICP" is not computable.</b> Company identification resolves a biased minority of traffic. ICP numbers are counts, or rates over the identified subset with that stated.</li>
+          <li><b>Meeting attendance is dark</b> — no-show status is logged on 2 of 2,917 meetings. Cheapest unlock in the whole funnel: reps logging outcomes, one click per meeting.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div id="tip"></div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+
+/* ---------- data ---------- */
+const STAGES = [
+  { name: "Sessions", wk: 79263, raw: "113,233 / 10d", note: "marketing-site sessions" },
+  { name: "Live-demo starts", wk: 1989, raw: "2,842 / 10d", note: "tried the on-page demo" },
+  { name: "Signup-intent clicks", wk: 4155, raw: "8,310 / 14d", note: "“Try For Free” clicks — intent, not completed accounts (product-side, no key back)" },
+  { name: "Sales-form submissions", wk: 294, raw: "1,133 / 27d", note: "complete server-side record" },
+  { name: "Meetings booked", wk: 187, raw: "720 / 27d", note: "63.5% of submissions" },
+  { name: "Meetings kept", wk: 164, raw: "633 / 27d", note: "56% of submissions end-to-end" },
+];
+const CLIFF = [
+  { page: "page 1", n: 235218, pct: 100 },
+  { page: "page 2", n: 23805, pct: 10.1 },
+  { page: "page 3", n: 8334, pct: 3.5 },
+  { page: "page 4", n: 3900, pct: 1.7 },
+  { page: "page 5", n: 2164, pct: 0.9 },
+  { page: "page 6+", n: 1263, pct: 0.5 },
+];
+const BASE = 1.52;
+const GRAVITY = [
+  { page: "/industry/healthcare", g: 4.4, visits: 1103 },
+  { page: "/industry/retail", g: 3.5, visits: 436 },
+  { page: "/features/book-appointments", g: 3.4, visits: 1309 },
+  { page: "/features/call-transfer", g: 3.4, visits: 1143 },
+  { page: "/use-cases/receptionists", g: 3.1, visits: 2188 },
+  { page: "/industry/home-services", g: 3.1, visits: 362 },
+  { page: "/pricing", g: 1.7, visits: 26895 },
+  { page: "homepage", g: 1.4, visits: 180263 },
+  { page: "blog: no-caller-id call-back", g: 0.04, visits: 2595 },
+  { page: "blog: cancelled-call meaning", g: 0.01, visits: 954 },
+];
+const CHANNELS = [
+  { name: "ChatGPT", obs: 3.4, self: 32.4, book: "70.7% booking rate" },
+  { name: "Google", obs: 28.3, self: 30.9, book: "65.7% booking rate" },
+];
+const DEALS = [
+  { seg: "SMB", n: 182, note: "167 SMB2 + 15 SMB1" },
+  { seg: "Mid-Market", n: 36, note: "" },
+  { seg: "Enterprise", n: 13, note: "5.4% — floor, cycles outlast window" },
+  { seg: "(no segment)", n: 10, note: "" },
+];
+
+/* ---------- tooltip ---------- */
+const tip = $("#tip");
+function hoverable(el, text) {
+  el.addEventListener("mousemove", (e) => {
+    tip.textContent = text; tip.style.opacity = 1;
+    tip.style.left = Math.min(e.clientX + 14, innerWidth - 270) + "px";
+    tip.style.top = (e.clientY + 14) + "px";
+  });
+  el.addEventListener("mouseleave", () => tip.style.opacity = 0);
+}
+
+/* ---------- renderers ---------- */
+function hbars(sel, rows, opts = {}) {
+  const max = Math.max(...rows.map(r => r.v));
+  const host = $(sel);
+  rows.forEach(r => {
+    const row = document.createElement("div");
+    row.className = "hrow";
+    const pct = Math.max(100 * r.v / max, 0.4);
+    row.innerHTML = `<div class="name" title="${r.name}">${r.name}</div>
+      <div class="track">${opts.baseline ? `<span class="basemark" style="left:${100 * opts.baseline / max}%"></span>` : ""}
+        <div class="bar${r.dim ? " dim" : ""}" style="width:${pct}%"></div></div>
+      <div class="val">${r.label}</div>`;
+    hoverable(row.querySelector(".track"), r.tip || r.name);
+    host.appendChild(row);
+  });
+}
+
+hbars("#stages", STAGES.map(s => ({
+  name: s.name, v: s.wk, label: s.wk >= 1000 ? (s.wk / 1000).toFixed(1) + "k /wk" : s.wk + " /wk",
+  tip: `${s.name}: ${s.raw} — ${s.note}`
+})));
+
+CLIFF.forEach(c => {
+  const col = document.createElement("div");
+  col.className = "col";
+  col.innerHTML = `<div class="cv">${c.pct}%</div>
+    <div class="cbar" style="height:${Math.max(c.pct, 0.8)}%"></div>
+    <div class="cl">${c.page}</div>`;
+  hoverable(col, `${c.page}: ${c.n.toLocaleString("en-US")} sessions (${c.pct}%)`);
+  $("#cliff").appendChild(col);
+});
+
+hbars("#gravity", GRAVITY.map(g => ({
+  name: g.page, v: g.g, dim: g.g < BASE,
+  label: g.g.toFixed(g.g < 0.1 ? 2 : 1) + "%",
+  tip: `${g.page}: ${g.g}% of sessions here go on to reach the form · ${g.visits.toLocaleString("en-US")} visits`
+})), { baseline: BASE });
+
+CHANNELS.forEach(ch => {
+  const row = document.createElement("div");
+  row.className = "dbrow";
+  const x = v => (v / 40) * 100; // axis 0–40%
+  row.innerHTML = `<div class="name">${ch.name}</div>
+    <div class="dbtrack">
+      <div class="dbaxis"></div>
+      <div class="dbline" style="left:${x(ch.obs)}%; width:${x(ch.self) - x(ch.obs)}%"></div>
+      <span class="dblab${x(ch.self) - x(ch.obs) < 12 ? " below" : ""}" style="left:${x(ch.obs)}%">${ch.obs}%</span>
+      <span class="dbdot obs" style="left:${x(ch.obs)}%"></span>
+      <span class="dblab" style="left:${x(ch.self)}%">${ch.self}%</span>
+      <span class="dbdot self" style="left:${x(ch.self)}%"></span>
+    </div>`;
+  hoverable(row.querySelector(".dbtrack"), `${ch.name}: analytics sees ${ch.obs}%, leads report ${ch.self}% · ${ch.book}`);
+  $("#dumbbell").appendChild(row);
+});
+
+hbars("#deals", DEALS.map(d => ({
+  name: d.seg, v: d.n, dim: d.seg === "(no segment)",
+  label: `${d.n} · ${(100 * d.n / 241).toFixed(0)}%`,
+  tip: `${d.seg}: ${d.n} of 241 deals${d.note ? " — " + d.note : ""}`
+})));
+
+/* ---------- tables ---------- */
+function table(sel, head, rows) {
+  $(sel).innerHTML = `<tr>${head.map(h => `<th>${h}</th>`).join("")}</tr>` +
+    rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join("")}</tr>`).join("");
+}
+table("#stages-t", ["Stage", "Per week", "Measured", "Note"], STAGES.map(s => [s.name, s.wk.toLocaleString("en-US"), s.raw, s.note]));
+table("#cliff-t", ["Depth", "Sessions", "Share"], CLIFF.map(c => [c.page, c.n.toLocaleString("en-US"), c.pct + "%"]));
+table("#gravity-t", ["Page", "P(reach form)", "Visits"], GRAVITY.map(g => [g.page, g.g + "%", g.visits.toLocaleString("en-US")]));
+table("#db-t", ["Channel", "Observed", "Self-reported", "Booking rate"], CHANNELS.map(c => [c.name, c.obs + "%", c.self + "%", c.book]));
+table("#deals-t", ["Segment", "Deals", "Share"], DEALS.map(d => [d.seg, d.n, (100 * d.n / 241).toFixed(1) + "%"]));
+</script>
+</body>
+</html>
