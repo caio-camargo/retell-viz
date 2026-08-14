@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Identified Accounts Journey</title>
+<style>
+  :root {
+    color-scheme: light;
+    --surface: #fcfcfb; --page: #f9f9f7; --ink-1: #0b0b0b; --ink-2: #52514e;
+    --muted: #898781; --border: rgba(11,11,11,0.10);
+    --band: #f3f3f0; --band-stroke: #e1e0d9;
+    --card: #ffffff; --card-stroke: #d6d5cd;
+    --accent: #2a78d6; --accent-soft: #eaf1fb; --accent-stroke: #b7d3f6;
+    --loss: #d03b3b; --loss-soft: #fdf1f1; --loss-stroke: #ecc4c0; --loss-ink: #9c3a33;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --surface: #1a1a19; --page: #0d0d0d; --ink-1: #ffffff; --ink-2: #c3c2b7;
+      --muted: #898781; --border: rgba(255,255,255,0.10);
+      --band: #202020; --band-stroke: #2c2c2a;
+      --card: #262625; --card-stroke: #3a3a37;
+      --accent: #3987e5; --accent-soft: #1d2735; --accent-stroke: #2a4a75;
+      --loss: #e66767; --loss-soft: #2c1d1c; --loss-stroke: #573432; --loss-ink: #e08d8d;
+    }
+  }
+  [data-theme="dark"] {
+    color-scheme: dark;
+    --surface: #1a1a19; --page: #0d0d0d; --ink-1: #ffffff; --ink-2: #c3c2b7;
+    --muted: #898781; --border: rgba(255,255,255,0.10);
+    --band: #202020; --band-stroke: #2c2c2a;
+    --card: #262625; --card-stroke: #3a3a37;
+    --accent: #3987e5; --accent-soft: #1d2735; --accent-stroke: #2a4a75;
+    --loss: #e66767; --loss-soft: #2c1d1c; --loss-stroke: #573432; --loss-ink: #e08d8d;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body { background: var(--page); color: var(--ink-1);
+    font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 28px clamp(16px, 3vw, 44px) 48px; }
+  main { max-width: 1220px; margin: 0 auto; }
+  .top { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; margin-bottom: 14px; flex-wrap: wrap; }
+  .top h1 { font-size: 20px; letter-spacing: -0.01em; }
+  .top a { color: var(--accent); text-decoration: none; font-size: 13px; }
+  .frame { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px; }
+  svg { display: block; width: 100%; height: auto; }
+  .band      { fill: var(--band); stroke: var(--band-stroke); }
+  .bandlabel { font-size: 11px; font-weight: 700; fill: var(--muted); letter-spacing: .13em; }
+  .card      { fill: var(--card); stroke: var(--card-stroke); }
+  .cardT     { font-size: 13.5px; font-weight: 600; fill: var(--ink-1); }
+  .pct       { font-size: 25px; font-weight: 700; fill: var(--accent); }
+  .n         { font-size: 11.5px; fill: var(--ink-2); }
+  .title     { font-size: 22px; font-weight: 700; fill: var(--ink-1); }
+  .sub       { font-size: 12.5px; fill: var(--ink-2); }
+  .lossbox   { fill: var(--loss-soft); stroke: var(--loss-stroke); }
+  .lossT     { font-size: 14px; font-weight: 700; fill: var(--loss); }
+  .lossN     { font-size: 11.5px; fill: var(--loss-ink); }
+  .losspct   { font-size: 25px; font-weight: 700; fill: var(--loss); }
+  .funnelbox { fill: var(--accent-soft); stroke: var(--accent-stroke); }
+  .flow      { stroke: var(--ink-2); stroke-width: 1.7; fill: none; }
+  .flowloss  { stroke: var(--loss); stroke-width: 1.7; fill: none; }
+  .arrow     { fill: var(--ink-2); }
+  .arrowloss { fill: var(--loss); }
+  .foot      { font-size: 11px; fill: var(--muted); }
+  .cmp       { font-size: 11.5px; fill: var(--accent); font-weight: 600; }
+</style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <h1>Identified enterprise visitors — the ones who never raise a hand</h1>
+    <a href="index.html">← all visualizations</a>
+  </div>
+  <div class="frame">
+  <svg viewBox="0 0 1180 780" xmlns="http://www.w3.org/2000/svg" role="img"
+       aria-label="Journey of engaged, enterprise-sized identified visitors: 10,000 export rows reduce to 155 workable companies, 91% of which never contact sales.">
+    <title>Identified enterprise visitors — engaged but never converting</title>
+
+    <defs>
+      <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" class="arrow"/>
+      </marker>
+      <marker id="a2loss" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" class="arrowloss"/>
+      </marker>
+    </defs>
+
+    <g id="layer-title">
+      <text class="sub" x="40" y="30">Engaged, enterprise-sized visitors identified by reverse-IP company matching — the population upstream of every form metric.</text>
+      <text class="sub" x="40" y="48">Blue notes compare with form submitters (July submitter cohort, 58 reconstructed journeys).</text>
+    </g>
+
+    <g id="layer-funnel">
+      <rect class="band" x="30" y="72" width="1120" height="96" rx="8"/>
+      <text class="bandlabel" x="46" y="94">FROM RAW EXPORT TO A LIST WORTH WORKING  ·  AUG 4–10 (≈6 DAYS)</text>
+      <rect class="funnelbox" x="130" y="106" width="190" height="46" rx="7"/>
+      <text class="cardT" x="225" y="127" text-anchor="middle">10,000 rows</text>
+      <text class="n"     x="225" y="144" text-anchor="middle">median 1 s, 1 page</text>
+      <rect class="funnelbox" x="395" y="106" width="190" height="46" rx="7"/>
+      <text class="cardT" x="490" y="127" text-anchor="middle">588 engaged</text>
+      <text class="n"     x="490" y="144" text-anchor="middle">≥60 s and ≥3 pages</text>
+      <rect class="funnelbox" x="660" y="106" width="190" height="46" rx="7"/>
+      <text class="cardT" x="755" y="127" text-anchor="middle">165 enterprise visits</text>
+      <text class="n"     x="755" y="144" text-anchor="middle">251+ employees</text>
+      <rect class="card" x="925" y="106" width="190" height="46" rx="7"/>
+      <text class="cardT" x="1020" y="127" text-anchor="middle">155 companies</text>
+      <text class="n"     x="1020" y="144" text-anchor="middle">the workable list</text>
+    </g>
+
+    <g id="layer-entry">
+      <rect class="band" x="30" y="186" width="1120" height="122" rx="8"/>
+      <text class="bandlabel" x="46" y="208">WHERE THEY LAND</text>
+      <rect class="card" x="130" y="222" width="240" height="66" rx="7"/>
+      <text class="pct"   x="148" y="256">32%</text>
+      <text class="cardT" x="218" y="249">Homepage</text>
+      <text class="cmp"   x="218" y="268">submitters: 62%</text>
+      <rect class="card" x="400" y="222" width="200" height="66" rx="7"/>
+      <text class="pct"   x="418" y="256">15%</text>
+      <text class="cardT" x="488" y="249">Pricing</text>
+      <rect class="card" x="630" y="222" width="240" height="66" rx="7"/>
+      <text class="pct"   x="648" y="256">10%</text>
+      <text class="cardT" x="718" y="246">Careers</text>
+      <text class="n"     x="718" y="264">job seekers survive the</text>
+      <text class="n"     x="718" y="280">engagement gate</text>
+      <rect class="card" x="900" y="222" width="215" height="66" rx="7"/>
+      <text class="cardT" x="918" y="246">Long tail</text>
+      <text class="n"     x="918" y="266">features · locales · partners</text>
+    </g>
+
+    <g id="layer-read">
+      <rect class="band" x="30" y="326" width="1120" height="150" rx="8"/>
+      <text class="bandlabel" x="46" y="348">WHAT THEY READ  ·  SHARE OF ALL PAGE VIEWS</text>
+      <rect class="card" x="130" y="362" width="985" height="96" rx="7"/>
+      <text class="cardT" x="150" y="386">Blog 12%  ·  Pricing 11%  ·  Features 9%  ·  Careers &amp; about 7%  ·  Industry 6%  ·  Enterprise plan 4%  ·  Comparisons 2%</text>
+      <text class="n"     x="150" y="410">They research broadly and check pricing — but comparison pages are only 2%,</text>
+      <text class="n"     x="150" y="429">unlike form submitters, every one of whose blog entries was a competitor or best-of post.</text>
+      <text class="n"     x="150" y="448">Careers &amp; about-us must be filtered out before any of this becomes a pipeline number.</text>
+    </g>
+
+    <g id="layer-outcome">
+      <rect class="band" x="30" y="494" width="1120" height="164" rx="8"/>
+      <text class="bandlabel" x="46" y="516">OUTCOME</text>
+      <rect class="card" x="130" y="532" width="250" height="72" rx="7"/>
+      <text class="pct"   x="148" y="568">9%</text>
+      <text class="cardT" x="210" y="561">Ever submitted</text>
+      <text class="n"     x="210" y="579">14 of 155 companies</text>
+      <rect class="lossbox" x="410" y="532" width="590" height="100" rx="7"/>
+      <text class="losspct" x="432" y="570">91%</text>
+      <text class="lossT" x="510" y="563">Never contact us at all</text>
+      <text class="lossN" x="432" y="594">141 of 155 engaged enterprise companies are invisible to the CRM, the</text>
+      <text class="lossN" x="432" y="612">routing log, and every funnel report — the loss happens before the form.</text>
+      <text class="lossN" x="432" y="630">They are reachable only as an ABM account list.</text>
+    </g>
+
+    <g id="layer-flows">
+      <path class="flow" d="M 320 129 L 391 129" marker-end="url(#a2)"/>
+      <path class="flow" d="M 585 129 L 656 129" marker-end="url(#a2)"/>
+      <path class="flow" d="M 850 129 L 921 129" marker-end="url(#a2)"/>
+      <path class="flow" d="M 1020 156 L 1020 178 L 250 178 L 250 218" marker-end="url(#a2)"/>
+      <path class="flow" d="M 250 288 L 250 320" marker-end="url(#a2)"/>
+      <path class="flow" d="M 250 458 L 250 528" marker-end="url(#a2)"/>
+      <path class="flowloss" d="M 380 568 L 406 568" marker-end="url(#a2loss)"/>
+    </g>
+
+    <g id="layer-footnote">
+      <text class="foot" x="40" y="692">Source: identified-visitor export, Aug 4–10 2026 (≈6 days — the export's 10,000-row cap silently truncated the labelled Aug 3 start; always check the real span).</text>
+      <text class="foot" x="40" y="710">Identification volume runs ~4× July's rate (the full Jul 22–29 week produced 2,928 rows and a 30-company list) — the workable list grew ~5× with it.</text>
+      <text class="foot" x="40" y="728">Company identification is reverse-IP and reliable at account level; the named individual attached is NOT evidence that person visited. Account-level view only.</text>
+      <text class="foot" x="40" y="746">Submitter comparison figures come from the 58 reconstructed form-submitter journeys (July). Per-page dwell, clicks and recordings are unavailable for this cohort.</text>
+    </g>
+  </svg>
+  </div>
+</main>
+</body>
+</html>
