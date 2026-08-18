@@ -318,7 +318,7 @@ for (const list of cols) for (const n of list) {
   const gate = GATES.has(n.id);
   const tip = term
     ? `${esc(termLbl(n.id))}|${n.in} of ${sessions} sessions${
-        n.id === "BOOKED" ? (ADS ? " end on the demo-request form or its confirmation page (the latter = a confirmed submission); booking is not observable at this grain" : LAKE ? " end on the demo-request form — submission and booking are not observable at this grain" : ALL ? ` end on the demo-request form or hit its confirmation page (${SK.confirmed || 0} confirmed submissions; booking itself not observable)` : " — meeting scheduled (held-rate not measured)")
+        n.id === "BOOKED" ? (ADS ? " submitted the form (confirmation page observed — drawn as this outcome, not as a step) or ended on it; booking is not observable at this grain" : LAKE ? " end on the demo-request form — submission and booking are not observable at this grain" : ALL ? ` end on the demo-request form or hit its confirmation page (${SK.confirmed || 0} confirmed submissions; booking itself not observable)` : " — meeting scheduled (held-rate not measured)")
         : n.id === "EXIT" ? (FORMEND ? " end elsewhere" : " end without booking")
         : n.id === APP_ID ? " end in the product — handed off or living there"
         : " are still going past step " + MAX}`
@@ -459,18 +459,20 @@ if (LAKE) {
   const s2 = document.getElementById("siblink2");
   s2.href = "sankey.html"; s2.textContent = "← ICP funnel";
   document.getElementById("sub").innerHTML = FO
-    ? `Only the paid-ad sessions that <b>touch the demo-request form</b> (or its ` +
-      `confirmation page) at some step — the winning paths, pulled out of the noise of the ` +
-      `full paid funnel. <b style="color:var(--booked)">Green</b> = the session ended on ` +
-      `the form or on <code>/thank-you-demo-call</code>, the post-submit confirmation — ` +
-      `the latter is a <b>confirmed submission</b>. <b>EXIT</b> = reached the form but ` +
-      `ended elsewhere. Booking is not observable at this grain.`
+    ? `Only the paid-ad sessions that <b>reach the demo-request form</b> — the winning ` +
+      `paths, pulled out of the noise of the full paid funnel. ` +
+      `<b style="color:var(--booked)">Green</b> = a <b>confirmed submission</b> (the ` +
+      `post-submit confirmation was observed) or the session ended on the form. The ` +
+      `journey is cut at the moment of submission — the confirmation page and any ` +
+      `post-submission browsing are not steps and are not drawn. <b>EXIT</b> = reached ` +
+      `the form but ended elsewhere. Booking is not observable at this grain.`
     : `Marketing-site sessions that <b>arrived from a paid ad</b> — a Google click id, an ad ` +
     `campaign id, or a paid UTM tag on the landing URL — one column per step. This capture ` +
     `is URL-based, so it survived the consent-banner disruption that broke cookie-level ` +
-    `user tracking. <b style="color:var(--booked)">Green</b> = the session ended on the ` +
-    `demo-request form or its post-submit confirmation page (the latter = a confirmed ` +
-    `submission); booking is not observable at this grain. Campaigns ` +
+    `user tracking. <b style="color:var(--booked)">Green</b> = a <b>confirmed submission</b> ` +
+    `(post-submit confirmation observed; the journey is cut at submission, so the ` +
+    `confirmation page is never a step) or the session ended on the form; booking is not ` +
+    `observable at this grain. Campaigns ` +
     `are not yet split out — this is the aggregate paid lane (campaign-level view planned).`;
   document.getElementById("foot").innerHTML =
     `Aggregate only — page paths and session counts, reduced inside the warehouse; no ` +

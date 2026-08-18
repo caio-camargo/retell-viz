@@ -29,11 +29,12 @@ from build_data_lakehouse import (sql, EVENTS, SITE_HOST, GATE, MAXSTEP, TOPN,
 SCRATCH = f"{CATALOG}.caio_scratch"
 PAID_TBL = f"{SCRATCH}.ads_paid_sessions"
 
-# The form's post-submit confirmation page. A session ending there is a
-# CONFIRMED submission — counting it as EXIT (as the first build did) hides the
-# strongest success signal. Same rule the identified-traffic funnel uses.
+# The form's post-submit confirmation page. It is NOT a journey step — it only
+# exists after the visitor has already submitted — so it never appears as a
+# node: each session's path is truncated at its first confirmation view, and
+# the session ends as a confirmed submission (green) on its last real page.
+# Post-submission browsing is likewise not drawn.
 CONFIRM = "/thank-you-demo-call"
-SUCCESS_PATHS = f"('{GATE}', '{CONFIRM}')"
 
 # Session-level paid membership + channel. gclid/gad_campaign_id are
 # Google-only signals; UTM decides the rest.
@@ -69,7 +70,8 @@ PAID_SQL = f"""
 # cannot be filtered after the fact; the counts don't carry per-session fate).
 def funnel_sql(form_only=False):
     reach_filter = f"""
-reachers AS (SELECT DISTINCT sk FROM dedup0 WHERE path IN {SUCCESS_PATHS}),
+reachers AS (SELECT DISTINCT sk FROM dedup0 WHERE path = '{GATE}'
+             UNION SELECT sk FROM ty),
 dedup AS (SELECT d.* FROM dedup0 d JOIN reachers r ON r.sk = d.sk),
 """ if form_only else "dedup AS (SELECT * FROM dedup0),"
     return f"""
@@ -96,11 +98,20 @@ pv AS (
 kept AS (
   SELECT * FROM pv WHERE path NOT IN ({",".join(f"'{p}'" for p in DROP_PAGES)})
 ),
+ty AS (
+  SELECT sk, MIN(event_ts) AS ty_ts FROM kept
+  WHERE path = '{CONFIRM}' GROUP BY sk
+),
+pre AS (
+  SELECT k.sk, k.path, k.event_ts
+  FROM kept k LEFT JOIN ty ON ty.sk = k.sk
+  WHERE (ty.ty_ts IS NULL OR k.event_ts < ty.ty_ts) AND k.path <> '{CONFIRM}'
+),
 dedup0 AS (
   SELECT sk, path, event_ts FROM (
     SELECT sk, path, event_ts,
            LAG(path) OVER (PARTITION BY sk ORDER BY event_ts) AS prev
-    FROM kept
+    FROM pre
   ) w WHERE prev IS NULL OR prev <> path
 ),
 {reach_filter}
@@ -133,17 +144,24 @@ SELECT 'flow', a.step, a.node, b.node, COUNT(*)
   FROM labeled a JOIN labeled b ON a.sk = b.sk AND b.step = a.step + 1
   WHERE a.step < {MAXSTEP} GROUP BY 1,2,3,4
 UNION ALL
-SELECT CASE WHEN last.raw_path IN {SUCCESS_PATHS} THEN 'end_gate_trunc' ELSE 'end_exit_trunc' END,
+SELECT CASE WHEN t.sk IS NOT NULL OR last.raw_path = '{GATE}'
+            THEN 'end_gate_trunc' ELSE 'end_exit_trunc' END,
        {MAXSTEP}, at_edge.node, '', COUNT(*)
   FROM labeled at_edge
   JOIN labeled last ON last.sk = at_edge.sk AND last.step = last.steps_total
+  LEFT JOIN ty t ON t.sk = at_edge.sk
   WHERE at_edge.step = {MAXSTEP} AND at_edge.steps_total > {MAXSTEP}
   GROUP BY 1,2,3,4
 UNION ALL
-SELECT CASE WHEN raw_path IN {SUCCESS_PATHS} THEN 'end_gate' ELSE 'end_exit' END,
-       step, node, '', COUNT(*)
-  FROM labeled WHERE step = steps_total AND steps_total <= {MAXSTEP}
+SELECT CASE WHEN t.sk IS NOT NULL OR l.raw_path = '{GATE}'
+            THEN 'end_gate' ELSE 'end_exit' END,
+       l.step, l.node, '', COUNT(*)
+  FROM labeled l LEFT JOIN ty t ON t.sk = l.sk
+  WHERE l.step = l.steps_total AND l.steps_total <= {MAXSTEP}
   GROUP BY 1,2,3,4
+UNION ALL
+SELECT 'excl', 0, 'confirmation-only', '', COUNT(*)
+  FROM ty t WHERE NOT EXISTS (SELECT 1 FROM dedup0 d WHERE d.sk = t.sk)
 """
 
 
@@ -173,9 +191,12 @@ def main():
 
         flows, ends, trunc = (collections.Counter(), collections.Counter(),
                               collections.Counter())
+        confirm_only = 0
         for kind, c, a, b, n in rows:
             c, n = int(c), int(n)
-            if kind in ("origin", "flow"):
+            if kind == "excl":
+                confirm_only = n
+            elif kind in ("origin", "flow"):
                 flows[(c, a, b)] += n
             elif kind == "end_gate":
                 ends[(c, a, "booked")] += n
@@ -209,7 +230,9 @@ def main():
                 **({"formOnly": True} if form_only else {}),
                 "origins": sorted({a for (c, a, _b) in flows if c == 0}),
                 "included": included,
-                "excluded": {},
+                "excluded": ({"sessions entering on the confirmation page "
+                              "(no pre-submission step)": confirm_only}
+                             if confirm_only else {}),
                 "appHopsElided": 0,
                 "reachedForm": reached,
                 "flows": [{"c": c, "from": a, "to": b, "n": n}
