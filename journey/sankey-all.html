@@ -113,9 +113,10 @@ const DATA = /*DATA-START*/{"meta":{"source":"Identified-visitor sessions, retel
 const SK = DATA.sankey, MAX = SK.maxstep;
 const ALL = SK.mode === "all"; // all-traffic variant: same code, different data + wording
 const LAKE = SK.mode === "lakehouse"; // warehouse-sourced all-traffic variant
+const ADS = SK.mode === "ads"; // warehouse-sourced PAID-sessions variant
 // both all-traffic datasets end at the form, not at a booking — booking is not
 // observable at that grain, so every "booked" affordance changes verb
-const FORMEND = ALL || LAKE;
+const FORMEND = ALL || LAKE || ADS;
 const BOOK_VERB = FORMEND ? "reach form" : "book";
 const CSS = getComputedStyle(document.documentElement);
 const PCOL = {
@@ -195,8 +196,8 @@ for (const a of acc.values()) {
 const totBooked = SK.ends.filter(e => e.end === "booked").reduce((a, e) => a + e.n, 0);
 const sessions = SK.included ?? DATA.meta.sessions;
 const excluded = Object.values(SK.excluded || {}).reduce((a, b) => a + b, 0);
-document.getElementById("meta").textContent = LAKE
-  ? `${sessions.toLocaleString()} sessions · ${totBooked.toLocaleString()} reach the form (${(totBooked / sessions * 100).toFixed(2)}%) · ${DATA.meta.pageviews.toLocaleString()} pageviews · ${DATA.meta.date_range[0]} → ${DATA.meta.date_range[1]}`
+document.getElementById("meta").textContent = (LAKE || ADS)
+  ? `${sessions.toLocaleString()} ${ADS ? "paid " : ""}sessions · ${totBooked.toLocaleString()} reach the form (${(totBooked / sessions * 100).toFixed(2)}%) · ${DATA.meta.pageviews.toLocaleString()} pageviews · ${DATA.meta.date_range[0]} → ${DATA.meta.date_range[1]}`
   : ALL
   ? `${sessions} identified sessions · ${totBooked} reach the form (${SK.confirmed || 0} confirmed submissions) · ${excluded} duplicate/empty export rows dropped · ${DATA.meta.date_range[0]} → ${DATA.meta.date_range[1]}`
   : `${sessions} marketing sessions · ${totBooked} book · ${excluded} sessions never touch the site (excluded) · ${DATA.meta.date_range[0]} → ${DATA.meta.date_range[1]}`;
@@ -317,13 +318,15 @@ for (const list of cols) for (const n of list) {
   const gate = GATES.has(n.id);
   const tip = term
     ? `${esc(termLbl(n.id))}|${n.in} of ${sessions} sessions${
-        n.id === "BOOKED" ? (LAKE ? " end on the demo-request form — submission and booking are not observable at this grain" : ALL ? ` end on the demo-request form or hit its confirmation page (${SK.confirmed || 0} confirmed submissions; booking itself not observable)` : " — meeting scheduled (held-rate not measured)")
+        n.id === "BOOKED" ? ((LAKE || ADS) ? " end on the demo-request form — submission and booking are not observable at this grain" : ALL ? ` end on the demo-request form or hit its confirmation page (${SK.confirmed || 0} confirmed submissions; booking itself not observable)` : " — meeting scheduled (held-rate not measured)")
         : n.id === "EXIT" ? (FORMEND ? " end elsewhere" : " end without booking")
         : n.id === APP_ID ? " end in the product — handed off or living there"
         : " are still going past step " + MAX}`
     : isOrigin
     ? (n.id === APP_ID
         ? `${esc(n.id)}|${n.out} sessions start inside the product — returning users; some surface into marketing and book`
+        : ADS
+        ? `${esc(n.id)}|${n.out} paid sessions — carried a click id, ad campaign id, or paid UTM on arrival (URL-based capture, unaffected by consent-cookie issues)`
         : LAKE
         ? `${esc(n.id)}|${n.out} sessions whose first attributed source this session was ${esc(n.id)} — measured by the analytics platform, not self-reported`
         : ALL
@@ -442,6 +445,29 @@ if (LAKE) {
     `ten locales. The window starts when the raw-event export was first connected and ` +
     `<b>cannot be backfilled</b>; it ends at the last fully-loaded day, so it trails ` +
     `real time by a day or two. Regenerate with <code>build_data_lakehouse.py</code>.`;
+} else if (ADS) {
+  document.title = "Journey Funnel — paid ad traffic";
+  document.getElementById("h1").textContent = "Journey Funnel — Paid Ad Traffic";
+  const sl = document.getElementById("siblink");
+  sl.href = "sankey-lakehouse.html"; sl.textContent = "← all traffic";
+  const s2 = document.getElementById("siblink2");
+  s2.href = "sankey.html"; s2.textContent = "← ICP funnel";
+  document.getElementById("sub").innerHTML =
+    `Marketing-site sessions that <b>arrived from a paid ad</b> — a Google click id, an ad ` +
+    `campaign id, or a paid UTM tag on the landing URL — one column per step. This capture ` +
+    `is URL-based, so it survived the consent-banner disruption that broke cookie-level ` +
+    `user tracking. <b style="color:var(--booked)">Green</b> = the session ended on the ` +
+    `demo-request form; submission and booking are not observable at this grain. Campaigns ` +
+    `are not yet split out — this is the aggregate paid lane (campaign-level view planned).`;
+  document.getElementById("foot").innerHTML =
+    `Aggregate only — page paths and session counts, reduced inside the warehouse; no ` +
+    `identifier is read or emitted. Marketing-site host only; <code>/careers</code> and ` +
+    `<code>/about-us</code> excluded; locale-prefixed paths normalised onto their canonical ` +
+    `page. A session counts as paid if <b>any</b> pageview in it carries gclid, an ad ` +
+    `campaign id, or utm_medium cpc/ppc/paid/paid_social — arrival attribution, not ` +
+    `ad-platform click counts (those disagree with on-site sessions and are being ` +
+    `validated separately). The window starts when the raw-event export was first ` +
+    `connected and <b>cannot be backfilled</b>. Regenerate with <code>build_data_ads.py</code>.`;
 } else if (ALL) {
   document.title = "Journey Funnel — all identified traffic";
   document.getElementById("h1").textContent = "Journey Funnel — All Traffic";

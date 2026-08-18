@@ -1,0 +1,219 @@
+#!/usr/bin/env python3
+"""Paid-ads journey funnel — the warehouse funnel restricted to paid sessions.
+
+Same reduction as build_data_lakehouse.py, over the subset of sessions that
+ARRIVED FROM A PAID AD: any pageview in the session carries a Google click id
+(gclid), an ad campaign id (gad_campaign_id), or utm_medium in
+cpc/ppc/paid/paid_social. This capture is URL-based, so it is unaffected by
+consent-cookie disruptions that break user-level tracking.
+
+Origins are the paid channel only (google ads / linkedin ads / other paid) —
+deliberately NOT per-campaign yet: ad-platform click counts disagree with
+on-site sessions by an order of magnitude and need validation before campaign
+economics go on a chart.
+
+Writes sankey-ads.html as a byte copy of sankey.html (mode "ads" drives the
+wording), so all funnel variants stay on one code path.
+"""
+import collections
+import json
+import sys
+
+from build_data_lakehouse import (sql, EVENTS, SITE_HOST, GATE, MAXSTEP, TOPN,
+                                  LOCALES, DROP_PAGES, WAREHOUSE, HERE, CATALOG)
+
+# Spark inlines CTEs, so a CTE referenced N times runs N times. The paid-session
+# aggregate scans the whole events table — materialize it once into a scratch
+# table instead of paying that scan on every reference (the CTE version ran >10
+# minutes; this shape runs in ~2).
+SCRATCH = f"{CATALOG}.caio_scratch"
+PAID_TBL = f"{SCRATCH}.ads_paid_sessions"
+
+# Session-level paid membership + channel. gclid/gad_campaign_id are
+# Google-only signals; UTM decides the rest.
+PAID_SQL = f"""
+  SELECT sk, CASE WHEN g = 1 THEN 'google ads'
+                  WHEN li = 1 THEN 'linkedin ads'
+                  WHEN goog = 1 THEN 'google ads'
+                  ELSE 'other paid' END AS origin
+  FROM (
+    SELECT concat(user_pseudo_id, '|', CAST(ga_session_id AS STRING)) AS sk,
+           MAX(CASE WHEN (gclid IS NOT NULL AND gclid <> '')
+                      OR (gad_campaign_id IS NOT NULL AND gad_campaign_id <> '')
+                    THEN 1 ELSE 0 END) AS g,
+           MAX(CASE WHEN lower(coalesce(param_medium, '')) IN
+                         ('cpc','ppc','paid','paid_social')
+                     AND lower(coalesce(param_source, '')) LIKE '%linkedin%'
+                    THEN 1 ELSE 0 END) AS li,
+           MAX(CASE WHEN lower(coalesce(param_medium, '')) IN
+                         ('cpc','ppc','paid','paid_social')
+                     AND lower(coalesce(param_source, '')) LIKE '%google%'
+                    THEN 1 ELSE 0 END) AS goog,
+           MAX(CASE WHEN lower(coalesce(param_medium, '')) IN
+                         ('cpc','ppc','paid','paid_social')
+                    THEN 1 ELSE 0 END) AS anypaid
+    FROM {EVENTS}
+    WHERE device_web_hostname = '{SITE_HOST}' AND ga_session_id IS NOT NULL
+    GROUP BY 1
+  ) f WHERE g = 1 OR anypaid = 1
+"""
+
+FUNNEL_SQL = f"""
+WITH paid AS (SELECT * FROM {PAID_TBL}),
+pv AS (
+  SELECT b.sk, b.event_ts,
+         CASE WHEN p = '' OR p IS NULL THEN '/' ELSE p END AS path
+  FROM (
+    SELECT concat(user_pseudo_id, '|', CAST(ga_session_id AS STRING)) AS sk,
+           event_ts,
+           CASE WHEN length(lp) > 1 AND endswith(lp, '/')
+                THEN left(lp, length(lp) - 1) ELSE lp END AS p
+    FROM (
+      SELECT user_pseudo_id, ga_session_id, event_ts,
+             regexp_replace(page_path, '^/({LOCALES})(/|$)', '/') AS lp
+      FROM {EVENTS}
+      WHERE device_web_hostname = '{SITE_HOST}'
+        AND event_name = 'page_view'
+        AND ga_session_id IS NOT NULL
+        AND page_path IS NOT NULL
+    ) a
+  ) b JOIN paid ON paid.sk = b.sk
+),
+kept AS (
+  SELECT * FROM pv WHERE path NOT IN ({",".join(f"'{p}'" for p in DROP_PAGES)})
+),
+dedup AS (
+  SELECT sk, path, event_ts FROM (
+    SELECT sk, path, event_ts,
+           LAG(path) OVER (PARTITION BY sk ORDER BY event_ts) AS prev
+    FROM kept
+  ) w WHERE prev IS NULL OR prev <> path
+),
+stepped AS (
+  SELECT sk, path,
+         ROW_NUMBER() OVER (PARTITION BY sk ORDER BY event_ts) AS step,
+         COUNT(*) OVER (PARTITION BY sk) AS steps_total
+  FROM dedup
+),
+topn AS (
+  SELECT path FROM (
+    SELECT path, ROW_NUMBER() OVER (ORDER BY COUNT(*) DESC) AS rn
+    FROM dedup GROUP BY path
+  ) t WHERE rn <= {TOPN}
+),
+labeled AS (
+  SELECT s.sk, s.step, s.steps_total,
+         CASE WHEN s.path = '/' THEN 'homepage'
+              WHEN s.path = '{GATE}' THEN '{GATE}'
+              WHEN s.path IN (SELECT path FROM topn) THEN s.path
+              ELSE '(other site pages)' END AS node,
+         s.path AS raw_path
+  FROM stepped s
+)
+SELECT 'origin' AS kind, 0 AS c, x.origin AS a, l.node AS b, COUNT(*) AS n
+  FROM labeled l JOIN paid x ON x.sk = l.sk
+  WHERE l.step = 1 GROUP BY 1,2,3,4
+UNION ALL
+SELECT 'flow', a.step, a.node, b.node, COUNT(*)
+  FROM labeled a JOIN labeled b ON a.sk = b.sk AND b.step = a.step + 1
+  WHERE a.step < {MAXSTEP} GROUP BY 1,2,3,4
+UNION ALL
+SELECT CASE WHEN last.raw_path = '{GATE}' THEN 'end_gate_trunc' ELSE 'end_exit_trunc' END,
+       {MAXSTEP}, at_edge.node, '', COUNT(*)
+  FROM labeled at_edge
+  JOIN labeled last ON last.sk = at_edge.sk AND last.step = last.steps_total
+  WHERE at_edge.step = {MAXSTEP} AND at_edge.steps_total > {MAXSTEP}
+  GROUP BY 1,2,3,4
+UNION ALL
+SELECT CASE WHEN raw_path = '{GATE}' THEN 'end_gate' ELSE 'end_exit' END,
+       step, node, '', COUNT(*)
+  FROM labeled WHERE step = steps_total AND steps_total <= {MAXSTEP}
+  GROUP BY 1,2,3,4
+"""
+
+META_SQL = f"""
+WITH paid AS (SELECT * FROM {PAID_TBL})
+SELECT CAST(MIN(e.event_date) AS STRING), CAST(MAX(e.event_date) AS STRING),
+       COUNT(DISTINCT concat(e.user_pseudo_id, '|', CAST(e.ga_session_id AS STRING))),
+       COUNT(*)
+FROM {EVENTS} e
+JOIN paid ON paid.sk = concat(e.user_pseudo_id, '|', CAST(e.ga_session_id AS STRING))
+WHERE e.device_web_hostname = '{SITE_HOST}' AND e.event_name = 'page_view'
+  AND e.ga_session_id IS NOT NULL
+"""
+
+
+def main():
+    if not WAREHOUSE:
+        sys.exit("Set LAKEHOUSE_WAREHOUSE_ID to your SQL warehouse id first "
+                 "(not committed: this repo is public).")
+    sql(f"CREATE SCHEMA IF NOT EXISTS {SCRATCH}")
+    sql(f"CREATE OR REPLACE TABLE {PAID_TBL} AS {PAID_SQL}")
+    first_day, last_day, paid_sessions, pageviews = sql(META_SQL)[0]
+    rows = sql(FUNNEL_SQL)
+
+    flows, ends, trunc = (collections.Counter(), collections.Counter(),
+                          collections.Counter())
+    for kind, c, a, b, n in rows:
+        c, n = int(c), int(n)
+        if kind in ("origin", "flow"):
+            flows[(c, a, b)] += n
+        elif kind == "end_gate":
+            ends[(c, a, "booked")] += n
+        elif kind == "end_gate_trunc":
+            trunc[(c, a, "booked")] += n
+        elif kind == "end_exit_trunc":
+            trunc[(c, a, "exit")] += n
+        else:
+            ends[(c, a, "exit")] += n
+
+    included = sum(n for (c, _a, _b), n in flows.items() if c == 0)
+    ended = sum(ends.values()) + sum(trunc.values())
+    if included != ended:
+        sys.exit(f"conservation FAILED: {included} in vs {ended} out")
+    reached = sum(n for (_c, _a, e), n in list(ends.items()) + list(trunc.items())
+                  if e == "booked")
+
+    out = {
+        "meta": {
+            "source": "Warehouse web-analytics sessions arriving from paid ads, "
+                      "marketing site only (aggregate; no identifiers read or emitted)",
+            "date_range": [first_day, last_day],
+            "sessions": included,
+            "pageviews": int(pageviews),
+        },
+        "sankey": {
+            "maxstep": MAXSTEP,
+            "mode": "ads",
+            "origins": sorted({a for (c, a, _b) in flows if c == 0}),
+            "included": included,
+            "excluded": {},
+            "appHopsElided": 0,
+            "reachedForm": reached,
+            "flows": [{"c": c, "from": a, "to": b, "n": n}
+                      for (c, a, b), n in sorted(flows.items())],
+            "ends": [{"c": c, "from": a, "end": e, "n": n}
+                     for (c, a, e), n in sorted(ends.items())]
+                  + [{"c": c, "from": a, "end": e, "n": n, "t": 1}
+                     for (c, a, e), n in sorted(trunc.items())],
+        },
+    }
+
+    js = json.dumps(out, separators=(",", ":"))
+    if "--stdout" in sys.argv:
+        print(js)
+        return
+
+    s, e = "/*DATA-START*/", "/*DATA-END*/"
+    dst = HERE / "sankey-ads.html"
+    html = (HERE / "sankey.html").read_text(encoding="utf-8")
+    i, j = html.index(s) + len(s), html.index(e)
+    dst.write_text(html[:i] + js + html[j:], encoding="utf-8")
+    print("wrote sankey-ads.html")
+    print(f"{included:,} paid sessions, {reached:,} reached the form "
+          f"({reached / included * 100:.2f}%), {first_day} -> {last_day}, "
+          f"{len(out['sankey']['flows'])} flows")
+
+
+if __name__ == "__main__":
+    main()
