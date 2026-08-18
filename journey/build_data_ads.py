@@ -29,6 +29,12 @@ from build_data_lakehouse import (sql, EVENTS, SITE_HOST, GATE, MAXSTEP, TOPN,
 SCRATCH = f"{CATALOG}.caio_scratch"
 PAID_TBL = f"{SCRATCH}.ads_paid_sessions"
 
+# The form's post-submit confirmation page. A session ending there is a
+# CONFIRMED submission — counting it as EXIT (as the first build did) hides the
+# strongest success signal. Same rule the identified-traffic funnel uses.
+CONFIRM = "/thank-you-demo-call"
+SUCCESS_PATHS = f"('{GATE}', '{CONFIRM}')"
+
 # Session-level paid membership + channel. gclid/gad_campaign_id are
 # Google-only signals; UTM decides the rest.
 PAID_SQL = f"""
@@ -58,7 +64,15 @@ PAID_SQL = f"""
   ) f WHERE g = 1 OR anypaid = 1
 """
 
-FUNNEL_SQL = f"""
+# form_only=True restricts the whole funnel to sessions that touch the gate at
+# any step — the flows are re-aggregated over that subset (an aggregate funnel
+# cannot be filtered after the fact; the counts don't carry per-session fate).
+def funnel_sql(form_only=False):
+    reach_filter = f"""
+reachers AS (SELECT DISTINCT sk FROM dedup0 WHERE path IN {SUCCESS_PATHS}),
+dedup AS (SELECT d.* FROM dedup0 d JOIN reachers r ON r.sk = d.sk),
+""" if form_only else "dedup AS (SELECT * FROM dedup0),"
+    return f"""
 WITH paid AS (SELECT * FROM {PAID_TBL}),
 pv AS (
   SELECT b.sk, b.event_ts,
@@ -82,13 +96,14 @@ pv AS (
 kept AS (
   SELECT * FROM pv WHERE path NOT IN ({",".join(f"'{p}'" for p in DROP_PAGES)})
 ),
-dedup AS (
+dedup0 AS (
   SELECT sk, path, event_ts FROM (
     SELECT sk, path, event_ts,
            LAG(path) OVER (PARTITION BY sk ORDER BY event_ts) AS prev
     FROM kept
   ) w WHERE prev IS NULL OR prev <> path
 ),
+{reach_filter}
 stepped AS (
   SELECT sk, path,
          ROW_NUMBER() OVER (PARTITION BY sk ORDER BY event_ts) AS step,
@@ -118,18 +133,19 @@ SELECT 'flow', a.step, a.node, b.node, COUNT(*)
   FROM labeled a JOIN labeled b ON a.sk = b.sk AND b.step = a.step + 1
   WHERE a.step < {MAXSTEP} GROUP BY 1,2,3,4
 UNION ALL
-SELECT CASE WHEN last.raw_path = '{GATE}' THEN 'end_gate_trunc' ELSE 'end_exit_trunc' END,
+SELECT CASE WHEN last.raw_path IN {SUCCESS_PATHS} THEN 'end_gate_trunc' ELSE 'end_exit_trunc' END,
        {MAXSTEP}, at_edge.node, '', COUNT(*)
   FROM labeled at_edge
   JOIN labeled last ON last.sk = at_edge.sk AND last.step = last.steps_total
   WHERE at_edge.step = {MAXSTEP} AND at_edge.steps_total > {MAXSTEP}
   GROUP BY 1,2,3,4
 UNION ALL
-SELECT CASE WHEN raw_path = '{GATE}' THEN 'end_gate' ELSE 'end_exit' END,
+SELECT CASE WHEN raw_path IN {SUCCESS_PATHS} THEN 'end_gate' ELSE 'end_exit' END,
        step, node, '', COUNT(*)
   FROM labeled WHERE step = steps_total AND steps_total <= {MAXSTEP}
   GROUP BY 1,2,3,4
 """
+
 
 META_SQL = f"""
 WITH paid AS (SELECT * FROM {PAID_TBL})
@@ -150,69 +166,75 @@ def main():
     sql(f"CREATE SCHEMA IF NOT EXISTS {SCRATCH}")
     sql(f"CREATE OR REPLACE TABLE {PAID_TBL} AS {PAID_SQL}")
     first_day, last_day, paid_sessions, pageviews = sql(META_SQL)[0]
-    rows = sql(FUNNEL_SQL)
 
-    flows, ends, trunc = (collections.Counter(), collections.Counter(),
-                          collections.Counter())
-    for kind, c, a, b, n in rows:
-        c, n = int(c), int(n)
-        if kind in ("origin", "flow"):
-            flows[(c, a, b)] += n
-        elif kind == "end_gate":
-            ends[(c, a, "booked")] += n
-        elif kind == "end_gate_trunc":
-            trunc[(c, a, "booked")] += n
-        elif kind == "end_exit_trunc":
-            trunc[(c, a, "exit")] += n
-        else:
-            ends[(c, a, "exit")] += n
+    for form_only, dest in ((False, "sankey-ads.html"),
+                            (True, "sankey-ads-form.html")):
+        rows = sql(funnel_sql(form_only))
 
-    included = sum(n for (c, _a, _b), n in flows.items() if c == 0)
-    ended = sum(ends.values()) + sum(trunc.values())
-    if included != ended:
-        sys.exit(f"conservation FAILED: {included} in vs {ended} out")
-    reached = sum(n for (_c, _a, e), n in list(ends.items()) + list(trunc.items())
-                  if e == "booked")
+        flows, ends, trunc = (collections.Counter(), collections.Counter(),
+                              collections.Counter())
+        for kind, c, a, b, n in rows:
+            c, n = int(c), int(n)
+            if kind in ("origin", "flow"):
+                flows[(c, a, b)] += n
+            elif kind == "end_gate":
+                ends[(c, a, "booked")] += n
+            elif kind == "end_gate_trunc":
+                trunc[(c, a, "booked")] += n
+            elif kind == "end_exit_trunc":
+                trunc[(c, a, "exit")] += n
+            else:
+                ends[(c, a, "exit")] += n
 
-    out = {
-        "meta": {
-            "source": "Warehouse web-analytics sessions arriving from paid ads, "
-                      "marketing site only (aggregate; no identifiers read or emitted)",
-            "date_range": [first_day, last_day],
-            "sessions": included,
-            "pageviews": int(pageviews),
-        },
-        "sankey": {
-            "maxstep": MAXSTEP,
-            "mode": "ads",
-            "origins": sorted({a for (c, a, _b) in flows if c == 0}),
-            "included": included,
-            "excluded": {},
-            "appHopsElided": 0,
-            "reachedForm": reached,
-            "flows": [{"c": c, "from": a, "to": b, "n": n}
-                      for (c, a, b), n in sorted(flows.items())],
-            "ends": [{"c": c, "from": a, "end": e, "n": n}
-                     for (c, a, e), n in sorted(ends.items())]
-                  + [{"c": c, "from": a, "end": e, "n": n, "t": 1}
-                     for (c, a, e), n in sorted(trunc.items())],
-        },
-    }
+        included = sum(n for (c, _a, _b), n in flows.items() if c == 0)
+        ended = sum(ends.values()) + sum(trunc.values())
+        if included != ended:
+            sys.exit(f"conservation FAILED ({dest}): {included} in vs {ended} out")
+        reached = sum(n for (_c, _a, e), n in
+                      list(ends.items()) + list(trunc.items()) if e == "booked")
 
-    js = json.dumps(out, separators=(",", ":"))
-    if "--stdout" in sys.argv:
-        print(js)
-        return
+        out = {
+            "meta": {
+                "source": "Warehouse web-analytics sessions arriving from paid ads"
+                          + (", form-reaching subset" if form_only else "")
+                          + ", marketing site only (aggregate; no identifiers read"
+                            " or emitted)",
+                "date_range": [first_day, last_day],
+                "sessions": included,
+                "pageviews": int(pageviews),
+            },
+            "sankey": {
+                "maxstep": MAXSTEP,
+                "mode": "ads",
+                **({"formOnly": True} if form_only else {}),
+                "origins": sorted({a for (c, a, _b) in flows if c == 0}),
+                "included": included,
+                "excluded": {},
+                "appHopsElided": 0,
+                "reachedForm": reached,
+                "flows": [{"c": c, "from": a, "to": b, "n": n}
+                          for (c, a, b), n in sorted(flows.items())],
+                "ends": [{"c": c, "from": a, "end": e, "n": n}
+                         for (c, a, e), n in sorted(ends.items())]
+                      + [{"c": c, "from": a, "end": e, "n": n, "t": 1}
+                         for (c, a, e), n in sorted(trunc.items())],
+            },
+        }
 
-    s, e = "/*DATA-START*/", "/*DATA-END*/"
-    dst = HERE / "sankey-ads.html"
-    html = (HERE / "sankey.html").read_text(encoding="utf-8")
-    i, j = html.index(s) + len(s), html.index(e)
-    dst.write_text(html[:i] + js + html[j:], encoding="utf-8")
-    print("wrote sankey-ads.html")
-    print(f"{included:,} paid sessions, {reached:,} reached the form "
-          f"({reached / included * 100:.2f}%), {first_day} -> {last_day}, "
-          f"{len(out['sankey']['flows'])} flows")
+        js = json.dumps(out, separators=(",", ":"))
+        if "--stdout" in sys.argv:
+            print(js)
+            continue
+
+        s, e = "/*DATA-START*/", "/*DATA-END*/"
+        dst = HERE / dest
+        html = (HERE / "sankey.html").read_text(encoding="utf-8")
+        i, j = html.index(s) + len(s), html.index(e)
+        dst.write_text(html[:i] + js + html[j:], encoding="utf-8")
+        label = "form-touching paid" if form_only else "paid"
+        print(f"wrote {dest}: {included:,} {label} sessions, {reached:,} "
+              f"end on the form ({reached / included * 100:.2f}%), "
+              f"{first_day} -> {last_day}, {len(out['sankey']['flows'])} flows")
 
 
 if __name__ == "__main__":
