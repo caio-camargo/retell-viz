@@ -144,7 +144,7 @@ SELECT 'flow', a.step, a.node, b.node, COUNT(*)
   FROM labeled a JOIN labeled b ON a.sk = b.sk AND b.step = a.step + 1
   WHERE a.step < {MAXSTEP} GROUP BY 1,2,3,4
 UNION ALL
-SELECT CASE WHEN t.sk IS NOT NULL OR last.raw_path = '{GATE}'
+SELECT CASE WHEN t.sk IS NOT NULL
             THEN 'end_gate_trunc' ELSE 'end_exit_trunc' END,
        {MAXSTEP}, at_edge.node, '', COUNT(*)
   FROM labeled at_edge
@@ -153,7 +153,7 @@ SELECT CASE WHEN t.sk IS NOT NULL OR last.raw_path = '{GATE}'
   WHERE at_edge.step = {MAXSTEP} AND at_edge.steps_total > {MAXSTEP}
   GROUP BY 1,2,3,4
 UNION ALL
-SELECT CASE WHEN t.sk IS NOT NULL OR l.raw_path = '{GATE}'
+SELECT CASE WHEN t.sk IS NOT NULL
             THEN 'end_gate' ELSE 'end_exit' END,
        l.step, l.node, '', COUNT(*)
   FROM labeled l LEFT JOIN ty t ON t.sk = l.sk
@@ -162,6 +162,12 @@ SELECT CASE WHEN t.sk IS NOT NULL OR l.raw_path = '{GATE}'
 UNION ALL
 SELECT 'excl', 0, 'confirmation-only', '', COUNT(*)
   FROM ty t WHERE NOT EXISTS (SELECT 1 FROM dedup0 d WHERE d.sk = t.sk)
+UNION ALL
+SELECT 'touch', 0, 'form-touched', '', COUNT(*) FROM (
+  SELECT DISTINCT sk FROM dedup0 WHERE path = '{GATE}'
+  UNION SELECT t.sk FROM ty t
+   WHERE EXISTS (SELECT 1 FROM dedup0 d WHERE d.sk = t.sk)
+) u
 """
 
 
@@ -191,11 +197,13 @@ def main():
 
         flows, ends, trunc = (collections.Counter(), collections.Counter(),
                               collections.Counter())
-        confirm_only = 0
+        confirm_only = form_touched = 0
         for kind, c, a, b, n in rows:
             c, n = int(c), int(n)
             if kind == "excl":
                 confirm_only = n
+            elif kind == "touch":
+                form_touched = n
             elif kind in ("origin", "flow"):
                 flows[(c, a, b)] += n
             elif kind == "end_gate":
@@ -228,6 +236,7 @@ def main():
                 "maxstep": MAXSTEP,
                 "mode": "ads",
                 **({"formOnly": True} if form_only else {}),
+                "formTouched": form_touched,
                 "origins": sorted({a for (c, a, _b) in flows if c == 0}),
                 "included": included,
                 "excluded": ({"sessions entering on the confirmation page "
@@ -254,9 +263,10 @@ def main():
         html = (HERE / "sankey.html").read_text(encoding="utf-8")
         i, j = html.index(s) + len(s), html.index(e)
         dst.write_text(html[:i] + js + html[j:], encoding="utf-8")
-        label = "form-touching paid" if form_only else "paid"
-        print(f"wrote {dest}: {included:,} {label} sessions, {reached:,} "
-              f"end on the form ({reached / included * 100:.2f}%), "
+        label = "form-reaching paid" if form_only else "paid"
+        print(f"wrote {dest}: {included:,} {label} sessions, "
+              f"{form_touched:,} reach the form, {reached:,} submit "
+              f"({reached / included * 100:.2f}%), "
               f"{first_day} -> {last_day}, {len(out['sankey']['flows'])} flows")
 
 

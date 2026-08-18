@@ -117,7 +117,7 @@ const ADS = SK.mode === "ads"; // warehouse-sourced PAID-sessions variant
 // both all-traffic datasets end at the form, not at a booking — booking is not
 // observable at that grain, so every "booked" affordance changes verb
 const FORMEND = ALL || LAKE || ADS;
-const BOOK_VERB = FORMEND ? "reach form" : "book";
+const BOOK_VERB = ADS ? "submit" : FORMEND ? "reach form" : "book";
 const CSS = getComputedStyle(document.documentElement);
 const PCOL = {
   www: CSS.getPropertyValue("--www").trim(),
@@ -196,8 +196,12 @@ for (const a of acc.values()) {
 const totBooked = SK.ends.filter(e => e.end === "booked").reduce((a, e) => a + e.n, 0);
 const sessions = SK.included ?? DATA.meta.sessions;
 const excluded = Object.values(SK.excluded || {}).reduce((a, b) => a + b, 0);
-document.getElementById("meta").textContent = (LAKE || ADS)
-  ? `${sessions.toLocaleString()} ${ADS ? (SK.formOnly ? "form-touching paid " : "paid ") : ""}sessions · ${totBooked.toLocaleString()} ${SK.formOnly ? "end on the form" : "reach the form"} (${(totBooked / sessions * 100).toFixed(2)}%) · ${DATA.meta.pageviews.toLocaleString()} pageviews · ${DATA.meta.date_range[0]} → ${DATA.meta.date_range[1]}`
+document.getElementById("meta").textContent = ADS
+  ? (SK.formOnly
+      ? `${sessions.toLocaleString()} form-reaching paid sessions · ${totBooked.toLocaleString()} submit (${(totBooked / sessions * 100).toFixed(0)}%) · ${DATA.meta.date_range[0]} → ${DATA.meta.date_range[1]}`
+      : `${sessions.toLocaleString()} paid sessions · ${(SK.formTouched ?? 0).toLocaleString()} reach the form (${((SK.formTouched ?? 0) / sessions * 100).toFixed(2)}%) · ${totBooked.toLocaleString()} submit (${(totBooked / sessions * 100).toFixed(2)}%) · ${DATA.meta.date_range[0]} → ${DATA.meta.date_range[1]}`)
+  : LAKE
+  ? `${sessions.toLocaleString()} sessions · ${totBooked.toLocaleString()} reach the form (${(totBooked / sessions * 100).toFixed(2)}%) · ${DATA.meta.pageviews.toLocaleString()} pageviews · ${DATA.meta.date_range[0]} → ${DATA.meta.date_range[1]}`
   : ALL
   ? `${sessions} identified sessions · ${totBooked} reach the form (${SK.confirmed || 0} confirmed submissions) · ${excluded} duplicate/empty export rows dropped · ${DATA.meta.date_range[0]} → ${DATA.meta.date_range[1]}`
   : `${sessions} marketing sessions · ${totBooked} book · ${excluded} sessions never touch the site (excluded) · ${DATA.meta.date_range[0]} → ${DATA.meta.date_range[1]}`;
@@ -318,7 +322,7 @@ for (const list of cols) for (const n of list) {
   const gate = GATES.has(n.id);
   const tip = term
     ? `${esc(termLbl(n.id))}|${n.in} of ${sessions} sessions${
-        n.id === "BOOKED" ? (ADS ? " submitted the form (confirmation page observed — drawn as this outcome, not as a step) or ended on it; booking is not observable at this grain" : LAKE ? " end on the demo-request form — submission and booking are not observable at this grain" : ALL ? ` end on the demo-request form or hit its confirmation page (${SK.confirmed || 0} confirmed submissions; booking itself not observable)` : " — meeting scheduled (held-rate not measured)")
+        n.id === "BOOKED" ? (ADS ? " submitted the form — post-submit confirmation observed (a floor; the server-side form archive is authoritative). Booking is not observable at this grain" : LAKE ? " end on the demo-request form — submission and booking are not observable at this grain" : ALL ? ` end on the demo-request form or hit its confirmation page (${SK.confirmed || 0} confirmed submissions; booking itself not observable)` : " — meeting scheduled (held-rate not measured)")
         : n.id === "EXIT" ? (FORMEND ? " end elsewhere" : " end without booking")
         : n.id === APP_ID ? " end in the product — handed off or living there"
         : " are still going past step " + MAX}`
@@ -365,7 +369,7 @@ document.getElementById("wrap").innerHTML = S.join("\n");
 }
 
 function esc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;"); }
-function termLbl(id) { return id === "BOOKED" && FORMEND ? "REACHES FORM" : id; }
+function termLbl(id) { return id === "BOOKED" && ADS ? "SUBMITTED" : id === "BOOKED" && FORMEND ? "REACHES FORM" : id; }
 
 /* ---------- hover ---------- */
 const tip = document.getElementById("tip");
@@ -459,20 +463,22 @@ if (LAKE) {
   const s2 = document.getElementById("siblink2");
   s2.href = "sankey.html"; s2.textContent = "← ICP funnel";
   document.getElementById("sub").innerHTML = FO
-    ? `Only the paid-ad sessions that <b>reach the demo-request form</b> — the winning ` +
-      `paths, pulled out of the noise of the full paid funnel. ` +
-      `<b style="color:var(--booked)">Green</b> = a <b>confirmed submission</b> (the ` +
-      `post-submit confirmation was observed) or the session ended on the form. The ` +
-      `journey is cut at the moment of submission — the confirmation page and any ` +
-      `post-submission browsing are not steps and are not drawn. <b>EXIT</b> = reached ` +
-      `the form but ended elsewhere. Booking is not observable at this grain.`
+    ? `Only the paid-ad sessions that <b>reach the demo-request form</b> (the ` +
+      `<code>/enterprise-plan</code> page — the form lives on it, so reaching the page IS ` +
+      `reaching the form). <b style="color:var(--booked)">Green</b> = <b>submitted</b>: the ` +
+      `post-submit confirmation was observed. <b>EXIT</b> = reached the form and left ` +
+      `without a confirmed submission — including sessions that ended on the form page. ` +
+      `The journey is cut at the moment of submission; the confirmation page and ` +
+      `post-submission browsing are never steps. Submission counts here are a <b>floor</b> ` +
+      `(blocked analytics can miss the confirmation view); the authoritative record is the ` +
+      `server-side form archive. Booking is not observable at this grain.`
     : `Marketing-site sessions that <b>arrived from a paid ad</b> — a Google click id, an ad ` +
     `campaign id, or a paid UTM tag on the landing URL — one column per step. This capture ` +
     `is URL-based, so it survived the consent-banner disruption that broke cookie-level ` +
-    `user tracking. <b style="color:var(--booked)">Green</b> = a <b>confirmed submission</b> ` +
-    `(post-submit confirmation observed; the journey is cut at submission, so the ` +
-    `confirmation page is never a step) or the session ended on the form; booking is not ` +
-    `observable at this grain. Campaigns ` +
+    `user tracking. <b style="color:var(--booked)">Green</b> = <b>submitted</b> — the ` +
+    `post-submit confirmation was observed (a floor: blocked analytics can miss it; the ` +
+    `server-side form archive is authoritative). Ending on the form page without a ` +
+    `confirmation counts as EXIT — reaching the form is not converting. Campaigns ` +
     `are not yet split out — this is the aggregate paid lane (campaign-level view planned).`;
   document.getElementById("foot").innerHTML =
     `Aggregate only — page paths and session counts, reduced inside the warehouse; no ` +
