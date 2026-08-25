@@ -47,7 +47,11 @@
   text.head { font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
               fill: #8e93a6; }
   text.band { font-weight: 600; font-size: 11px; }
-  path.flow { fill: none; transition: opacity .12s; cursor: pointer; }
+  text.zoomtag { font-size: 9px; fill: var(--accent); opacity: .75; letter-spacing: .04em; }
+  #zoombtn { font-size: 11px; cursor: pointer; color: var(--accent); border: 1px solid var(--line);
+             border-radius: 5px; padding: 1px 7px; user-select: none; }
+  #zoombtn:hover { border-color: var(--accent); }
+  path.flow { stroke: none; transition: opacity .12s; cursor: pointer; }
   rect.node { cursor: pointer; }
   #tip { position: fixed; display: none; pointer-events: none; z-index: 10;
          background: rgba(10,12,17,.94); border: 1px solid var(--line); border-radius: 8px;
@@ -81,6 +85,7 @@
   <a href="index.html" id="graphlink">← gravity graph</a>
   <a href="sankey-all.html" id="siblink">all-traffic funnel →</a>
   <a href="sankey-lakehouse.html" id="siblink2">warehouse funnel →</a>
+  <span id="zoombtn" title="Switch between true cross-column proportions and per-column magnification"></span>
   <span style="font-size:11px;color:var(--dim)" id="meta"></span>
 </header>
 <div id="sub">
@@ -162,7 +167,13 @@ const isOther = id => id.startsWith("(other");
 // funnel: who arrives from the product, who gets handed to it — decided at data
 // level in build_data.py; interior marketing→app→marketing hops are spliced there).
 const TERM = MAX + 1; // outcome column: real fates only — BOOKED / app dashboard / EXIT
-let nodes, links, cols, scale;
+let nodes, links, cols, scale, colScale;
+// Column magnification: 90%+ of sessions exit at step 1, so a globally
+// proportional chart squeezes every later step into a hairline. Each column can
+// instead be scaled to fill the height — widths then compare WITHIN a column,
+// not across, and every magnified column prints its multiplier in the header.
+let ZOOM = true;
+const MAXZOOM = 40;
 function build() {
 const mapId = id => id;
 // node key: `${col}|${id}` — columns: 0 START, 1..MAX pages, MAX+1 outcome
@@ -231,20 +242,28 @@ for (let c = 0; c < NCOLS; c++) {
   cols.push(list);
 }
 const usableH = Hv - M.t - M.b;
-// per-column: value budget = usable height minus this column's gaps; global scale = tightest
-scale = Math.min(...cols.map(list => {
+// per-column: value budget = usable height minus this column's gaps
+const colFit = list => {
   const sum = list.reduce((a, n) => a + Math.max(n.in, n.out), 0);
   return sum ? (usableH - GAP * Math.max(0, list.length - 1)) / sum : Infinity;
-})) * 0.98;
+};
+// global scale = tightest column — the honest, cross-column-comparable one
+scale = Math.min(...cols.map(colFit)) * 0.98;
+// magnified: each column fills the height on its own terms, capped so a 3-session
+// column doesn't read as a wall. Ribbons taper between differently-scaled columns,
+// which is the visual tell that the scale changed.
+colScale = cols.map(list => ZOOM
+  ? Math.min(colFit(list) * 0.98, scale * MAXZOOM)
+  : scale);
 
 for (let c = 0; c < NCOLS; c++) {
   // extra air below a gate so heavy ribbons from its neighbor don't read as its own
   const gateAir = 12;
-  const hSum = cols[c].reduce((a, n) => a + Math.max(n.in, n.out) * scale
+  const hSum = cols[c].reduce((a, n) => a + Math.max(n.in, n.out) * colScale[c]
     + (GATES.has(n.id) ? gateAir : 0), 0) + GAP * Math.max(0, cols[c].length - 1);
   let y = M.t + (usableH - hSum) / 2;
   for (const n of cols[c]) {
-    n.h = Math.max(2, Math.max(n.in, n.out) * scale);
+    n.h = Math.max(2, Math.max(n.in, n.out) * colScale[c]);
     n.x = colX(c); n.y = y;
     y += n.h + GAP + (GATES.has(n.id) ? gateAir : 0);
   }
@@ -255,9 +274,9 @@ for (let c = 0; c < NCOLS; c++) {
 // by destination y (booked ribbons leave the top of a node's stack, exits the
 // bottom), incoming stacks by source column then y (early steps arrive on top)
 links.sort((a, b) => a.src.col - b.src.col || a.dst.y - b.dst.y);
-for (const l of links) { l.sy = l.src.y + l.src.srcOff; l.src.srcOff += l.n * scale; }
+for (const l of links) { l.sy = l.src.y + l.src.srcOff; l.src.srcOff += l.n * colScale[l.src.col]; }
 links.sort((a, b) => a.dst.col - b.dst.col || a.src.col - b.src.col || a.src.y - b.src.y);
-for (const l of links) { l.dy = l.dst.y + l.dst.dstOff; l.dst.dstOff += l.n * scale; }
+for (const l of links) { l.dy = l.dst.y + l.dst.dstOff; l.dst.dstOff += l.n * colScale[l.dst.col]; }
 
 /* ---------- render ---------- */
 const S = [];
@@ -265,16 +284,23 @@ S.push(`<svg viewBox="0 0 ${Wv} ${Hv}" xmlns="http://www.w3.org/2000/svg">`);
 
 // column headers — the last column is the outcome distribution, comparable by height
 const heads = ["origin*", ...Array.from({ length: MAX }, (_, i) => "step " + (i + 1)), "outcome"];
-heads.forEach((h, c) => S.push(`<text class="head" x="${colX(c) + NW / 2}" y="${M.t - 8}" text-anchor="middle">${h}</text>`));
+heads.forEach((h, c) => {
+  const z = colScale[c] / scale;
+  S.push(`<text class="head" x="${colX(c) + NW / 2}" y="${M.t - 8}" text-anchor="middle">${h}</text>`);
+  // the multiplier is the honesty mechanism for giving up cross-column proportionality
+  if (z >= 1.15) S.push(`<text class="head zoomtag" x="${colX(c) + NW / 2}" y="${M.t - 21}"
+      text-anchor="middle">&#215;${z >= 10 ? Math.round(z) : z.toFixed(1)}</text>`);
+});
 
 // links, painted in z-order: exit mass at the back, page flows, booked story on top
 let li = 0;
 const zRank = { exit: 0, app: 0.5, flow: 1, booked: 2 };
 const ordered = [...links].sort((a, b) => zRank[a.kind] - zRank[b.kind]);
 for (const l of ordered) {
-  const w = Math.max(1.2, l.n * scale);
+  const w = Math.max(1.2, l.n * colScale[l.src.col]);   // width leaving the source
+  const w2 = Math.max(1.2, l.n * colScale[l.dst.col]);  // width arriving at the dest
   const x1 = l.src.x + NW, x2 = l.dst.x;
-  const y1 = l.sy + w / 2, y2 = l.dy + w / 2;
+  const y1 = l.sy + w / 2, y2 = l.dy + w2 / 2;
   const mx = (x1 + x2) / 2;
   let col, op, tip;
   if (l.kind === "booked") {
@@ -299,14 +325,19 @@ for (const l of ordered) {
   // middle isn't drawn. Dashing carries "incomplete path" honestly here (unlike
   // on a gridline, where it only adds noise).
   if (l.trunc) tip += ` · journey ran past step ${MAX}, middle not drawn`;
-  S.push(`<path class="flow" id="L${li}" d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}"
-    stroke="${col}" stroke-width="${w}" opacity="${op}"
-    ${l.trunc ? `stroke-dasharray="${Math.max(4, w * 1.2)} ${Math.max(3, w * 0.9)}"` : ""}
+  // filled band, not a stroked line: the two ends can have different widths when
+  // their columns are magnified differently, and the taper shows that honestly
+  const t1 = l.sy, b1 = l.sy + w, t2 = l.dy, b2 = l.dy + w2;
+  const d = `M${x1},${t1} C${mx},${t1} ${mx},${t2} ${x2},${t2}`
+          + ` L${x2},${b2} C${mx},${b2} ${mx},${b1} ${x1},${b1} Z`;
+  S.push(`<path class="flow" id="L${li}" d="${d}"
+    fill="${col}" opacity="${op}"
+    ${l.trunc ? `stroke="${col}" stroke-width="1" stroke-dasharray="5 4"` : ""}
     data-src="${l.src.col}|${esc(l.src.id)}" data-dst="${l.dst.col}|${esc(l.dst.id)}"
     data-tip="${tip}"/>`);
   // the per-step counts stay printed at the departure point — the stub labels' job
   if (l.kind === "booked" && l.n >= (FORMEND ? 5 : 1)) // in the big dataset, label only the major green departures
-    S.push(`<text class="band" x="${x1 + 6}" y="${y1 - w / 2 - 5}" style="fill:${BOOKED_C}">${l.n} ${BOOK_VERB}</text>`);
+    S.push(`<text class="band" x="${x1 + 6}" y="${Math.max(M.t + 10, y1 - w / 2 - 5)}" style="fill:${BOOKED_C}">${l.n} ${BOOK_VERB}</text>`);
   li++;
 }
 
@@ -330,7 +361,13 @@ for (const list of cols) for (const n of list) {
     ? (n.id === APP_ID
         ? `${esc(n.id)}|${n.out} sessions start inside the product — returning users; some surface into marketing and book`
         : ADS
-        ? `${esc(n.id)}|${n.out} paid sessions — carried a click id, ad campaign id, or paid UTM on arrival (URL-based capture, unaffected by consent-cookie issues)`
+        ? (() => {
+            const cs = (SK.campaigns || {})[n.id];
+            const money = cs ? ` · $${cs.spend.toLocaleString()} spent in this window`
+                + (cs.clicks ? `, ${cs.clicks.toLocaleString()} ad clicks ($${(cs.spend / cs.clicks).toFixed(2)}/click)` : "")
+                + ` · $${(cs.spend / Math.max(n.out, 1)).toFixed(2)} per session landed` : "";
+            return `${esc(n.id)}|${n.out} paid sessions from this campaign${money}`;
+          })()
         : LAKE
         ? `${esc(n.id)}|${n.out} sessions whose first attributed source this session was ${esc(n.id)} — measured by the analytics platform, not self-reported`
         : ALL
@@ -341,7 +378,8 @@ for (const list of cols) for (const n of list) {
     fill="${col}" opacity="${op}" ${gate ? `stroke="${BOOKED_C}" stroke-width="1.6" stroke-dasharray="4 3"` : ""}
     data-id="${n.col}|${esc(n.id)}"
     data-tip="${tip}"/>`);
-  const lbl = term ? `${termLbl(n.id)} · ${n.in}` : isOrigin ? `${n.id} · ${n.out}`
+  const lbl = term ? `${termLbl(n.id)} · ${n.in}`
+            : isOrigin ? `${n.id.length > 24 ? n.id.slice(0, 23) + "…" : n.id} · ${n.out}`
             : n.id.length > 26 ? n.id.slice(0, 25) + "…" : n.id;
   if (n.h >= 7 || gate || special || term)
     S.push(`<text ${term ? 'class="band"' : ""} x="${n.x + NW + 5}" y="${n.y + n.h / 2 + 3.5}"
@@ -365,6 +403,13 @@ document.getElementById("wrap").innerHTML = S.join("\n");
     + (links.some(l => l.trunc)
         ? `<span><span style="display:inline-block;width:18px;border-top:2px dashed #8e93a6;`
           + `vertical-align:3px;margin-right:5px"></span>ran past step ${MAX} (real outcome, middle undrawn)</span>`
+        : "")
+    // magnification has to be announced wherever the chart is read, not just in prose
+    + (ZOOM && colScale.some((v, c) => v / scale >= 1.15)
+        ? `<span><span style="display:inline-block;width:16px;height:0;border-top:7px solid var(--accent);`
+          + `border-right:5px solid transparent;opacity:.5;vertical-align:2px;margin-right:5px"></span>`
+          + `columns magnified to their own scale (&#215;N in the header) — compare widths `
+          + `<b>within</b> a column, not across; ribbons taper where the scale changes</span>`
         : "");
 }
 
@@ -472,14 +517,14 @@ if (LAKE) {
       `post-submission browsing are never steps. Submission counts here are a <b>floor</b> ` +
       `(blocked analytics can miss the confirmation view); the authoritative record is the ` +
       `server-side form archive. Booking is not observable at this grain.`
-    : `Marketing-site sessions that <b>arrived from a paid ad</b> — a Google click id, an ad ` +
-    `campaign id, or a paid UTM tag on the landing URL — one column per step. This capture ` +
-    `is URL-based, so it survived the consent-banner disruption that broke cookie-level ` +
-    `user tracking. <b style="color:var(--booked)">Green</b> = <b>submitted</b> — the ` +
-    `post-submit confirmation was observed (a floor: blocked analytics can miss it; the ` +
-    `server-side form archive is authoritative). Ending on the form page without a ` +
-    `confirmation counts as EXIT — reaching the form is not converting. Campaigns ` +
-    `are not yet split out — this is the aggregate paid lane (campaign-level view planned).`;
+    : `Marketing-site sessions that <b>arrived from a paid ad</b>, split by <b>campaign</b> — ` +
+    `a Google click id, an ad campaign id, or a paid UTM tag on the landing URL, one column ` +
+    `per step. Google Ads is 99% of this traffic and 98% of it carries a campaign id. ` +
+    `<b style="color:var(--booked)">Green</b> = <b>submitted</b> — the post-submit ` +
+    `confirmation was observed (a floor: blocked analytics can miss it; the server-side form ` +
+    `archive is authoritative). Ending on the form page without a confirmation counts as ` +
+    `EXIT — reaching the form is not converting. <b>Hover a campaign</b> for its spend, ` +
+    `cost per click and cost per session in this window.`;
   document.getElementById("foot").innerHTML =
     `Aggregate only — page paths and session counts, reduced inside the warehouse; no ` +
     `identifier is read or emitted. Marketing-site host only; <code>/careers</code> and ` +
@@ -514,6 +559,12 @@ if (LAKE) {
   const el = document.getElementById("elided");
   if (el) el.textContent = SK.appHopsElided || 0;
 }
+(function () {
+  const btn = document.getElementById("zoombtn");
+  const paint = () => btn.textContent = ZOOM ? "magnified columns ⇄ true scale" : "true scale ⇄ magnify columns";
+  btn.addEventListener("click", () => { ZOOM = !ZOOM; paint(); build(); });
+  paint();
+})();
 build();
 </script>
 </body>

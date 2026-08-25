@@ -4,13 +4,17 @@
 Same reduction as build_data_lakehouse.py, over the subset of sessions that
 ARRIVED FROM A PAID AD: any pageview in the session carries a Google click id
 (gclid), an ad campaign id (gad_campaign_id), or utm_medium in
-cpc/ppc/paid/paid_social. This capture is URL-based, so it is unaffected by
-consent-cookie disruptions that break user-level tracking.
+cpc/ppc/paid/paid_social. This capture is URL-based, so it largely escaped the
+CookieYes consent disruption — measured on paid pageviews, session ids were
+0% null through 2026-08-11, 2-5% to 08-18, then 10-21% from 08-19, so the most
+recent days undercount somewhat.
 
-Origins are the paid channel only (google ads / linkedin ads / other paid) —
-deliberately NOT per-campaign yet: ad-platform click counts disagree with
-on-site sessions by an order of magnitude and need validation before campaign
-economics go on a chart.
+Origins are the AD CAMPAIGN (top N by sessions, the rest folded into "other
+campaigns"). Channel-level origins were pointless here — Google Ads is 99.4% of
+paid traffic, so the origin column was one node. 98.4% of Google-ads sessions
+carry `gad_campaign_id`, and Ads-reported clicks reconcile ~1:1 with sessions
+(verified 2026-08-25), so spend per campaign rides along in the payload and
+shows up in each origin's tooltip.
 
 Writes sankey-ads.html as a byte copy of sankey.html (mode "ads" drives the
 wording), so all funnel variants stay on one code path.
@@ -38,31 +42,81 @@ CONFIRM = "/thank-you-demo-call"
 
 # Session-level paid membership + channel. gclid/gad_campaign_id are
 # Google-only signals; UTM decides the rest.
+TOPCAMP = 8   # named campaigns on the origin axis; the tail folds into one node
+
+# Campaign labels are long ("ScalixAI | Non-Branded | Use Cases | 27 July 2026")
+# and the node axis is narrow, so strip the account prefix and the launch-date
+# suffix — what distinguishes them is the middle.
+# NB: the pipe needs a DOUBLE backslash — Spark unescapes the string literal
+# first, so '\|' reaches the regex engine as a bare alternation whose empty-left
+# branch matches every space (it silently turned "Comp - Poly AI" into
+# "Comp-PolyAI"). '\|' is what makes it a literal pipe.
+NAME_CLEAN = (r"regexp_replace(regexp_replace(regexp_replace(ch.name, "
+              r"'^ScalixAI \\| ', ''), ' \\| [0-9]{1,2} [A-Za-z]{3,9} [0-9]{4}$', ''), "
+              r"' \\| [A-Za-z]{3,9} [0-9]{4}$', '')")
+
+# Session-level paid membership + which campaign brought it.
+# gclid/gad_campaign_id are Google-only signals; UTM decides the rest.
 PAID_SQL = f"""
-  SELECT sk, CASE WHEN g = 1 THEN 'google ads'
-                  WHEN li = 1 THEN 'linkedin ads'
-                  WHEN goog = 1 THEN 'google ads'
-                  ELSE 'other paid' END AS origin
-  FROM (
-    SELECT concat(user_pseudo_id, '|', CAST(ga_session_id AS STRING)) AS sk,
-           MAX(CASE WHEN (gclid IS NOT NULL AND gclid <> '')
-                      OR (gad_campaign_id IS NOT NULL AND gad_campaign_id <> '')
-                    THEN 1 ELSE 0 END) AS g,
-           MAX(CASE WHEN lower(coalesce(param_medium, '')) IN
-                         ('cpc','ppc','paid','paid_social')
-                     AND lower(coalesce(param_source, '')) LIKE '%linkedin%'
-                    THEN 1 ELSE 0 END) AS li,
-           MAX(CASE WHEN lower(coalesce(param_medium, '')) IN
-                         ('cpc','ppc','paid','paid_social')
-                     AND lower(coalesce(param_source, '')) LIKE '%google%'
-                    THEN 1 ELSE 0 END) AS goog,
-           MAX(CASE WHEN lower(coalesce(param_medium, '')) IN
-                         ('cpc','ppc','paid','paid_social')
-                    THEN 1 ELSE 0 END) AS anypaid
-    FROM {EVENTS}
-    WHERE device_web_hostname = '{SITE_HOST}' AND ga_session_id IS NOT NULL
-    GROUP BY 1
-  ) f WHERE g = 1 OR anypaid = 1
+WITH base AS (
+  SELECT concat(user_pseudo_id, '|', CAST(ga_session_id AS STRING)) AS sk,
+         MAX(CASE WHEN gad_campaign_id <> '' THEN gad_campaign_id END) AS cid,
+         MAX(CASE WHEN gclid IS NOT NULL AND gclid <> '' THEN 1 ELSE 0 END) AS g,
+         MAX(CASE WHEN lower(coalesce(param_medium, '')) IN
+                       ('cpc','ppc','paid','paid_social')
+                   AND lower(coalesce(param_source, '')) LIKE '%linkedin%'
+                  THEN 1 ELSE 0 END) AS li,
+         MAX(CASE WHEN lower(coalesce(param_medium, '')) IN
+                       ('cpc','ppc','paid','paid_social')
+                  THEN 1 ELSE 0 END) AS anypaid
+  FROM {EVENTS}
+  WHERE device_web_hostname = '{SITE_HOST}' AND ga_session_id IS NOT NULL
+  GROUP BY 1
+  HAVING g = 1 OR anypaid = 1
+),
+-- campaign_history is an SCD table: dedupe to one row per id BEFORE joining,
+-- or every downstream sum multiplies by the number of history rows
+ch AS (
+  SELECT id, name FROM (
+    SELECT id, name, ROW_NUMBER() OVER (PARTITION BY id ORDER BY updated_at DESC) rn
+    FROM workspace.google_ads.campaign_history
+  ) x WHERE rn = 1
+),
+lab AS (
+  SELECT b.sk, b.g, b.li,
+         CASE WHEN b.cid IS NULL THEN NULL
+              ELSE COALESCE({NAME_CLEAN}, concat('campaign ', b.cid)) END AS nm
+  FROM base b LEFT JOIN ch ON ch.id = CAST(b.cid AS BIGINT)
+),
+rk AS (
+  SELECT nm, ROW_NUMBER() OVER (ORDER BY COUNT(*) DESC) AS rn
+  FROM lab WHERE nm IS NOT NULL GROUP BY nm
+)
+SELECT l.sk,
+       CASE WHEN l.nm IS NOT NULL AND r.rn <= {TOPCAMP} THEN l.nm
+            WHEN l.nm IS NOT NULL THEN 'other campaigns'
+            WHEN l.li = 1 THEN 'linkedin ads'
+            WHEN l.g = 1 THEN 'google ads (untagged)'
+            ELSE 'other paid' END AS origin
+FROM lab l LEFT JOIN rk r ON r.nm = l.nm
+"""
+
+# Spend/clicks per campaign label, over the same window the funnel covers.
+def camp_stats_sql(first_day, last_day):
+    return f"""
+WITH ch AS (
+  SELECT id, name FROM (
+    SELECT id, name, ROW_NUMBER() OVER (PARTITION BY id ORDER BY updated_at DESC) rn
+    FROM workspace.google_ads.campaign_history
+  ) x WHERE rn = 1
+)
+SELECT COALESCE({NAME_CLEAN}, concat('campaign ', CAST(s.id AS STRING))) AS label,
+       CAST(ROUND(SUM(s.cost_micros)/1e6, 0) AS STRING) AS spend,
+       CAST(SUM(s.clicks) AS STRING) AS clicks
+FROM workspace.google_ads.campaign_stats s
+LEFT JOIN ch ON ch.id = s.id
+WHERE s.date BETWEEN '{first_day}' AND '{last_day}'
+GROUP BY 1 HAVING SUM(s.cost_micros) > 0
 """
 
 # form_only=True restricts the whole funnel to sessions that touch the gate at
@@ -190,6 +244,11 @@ def main():
     sql(f"CREATE SCHEMA IF NOT EXISTS {SCRATCH}")
     sql(f"CREATE OR REPLACE TABLE {PAID_TBL} AS {PAID_SQL}")
     first_day, last_day, paid_sessions, pageviews = sql(META_SQL)[0]
+    # spend rides along so each origin's tooltip can answer "what did this cost?"
+    camp = {r[0]: {"spend": int(float(r[1])), "clicks": int(r[2])}
+            for r in sql(camp_stats_sql(first_day, last_day))}
+    print(f"campaign spend rows: {len(camp)} "
+          f"(total ${sum(c['spend'] for c in camp.values()):,})")
 
     for form_only, dest in ((False, "sankey-ads.html"),
                             (True, "sankey-ads-form.html")):
@@ -237,6 +296,7 @@ def main():
                 "mode": "ads",
                 **({"formOnly": True} if form_only else {}),
                 "formTouched": form_touched,
+                "campaigns": camp,
                 "origins": sorted({a for (c, a, _b) in flows if c == 0}),
                 "included": included,
                 "excluded": ({"sessions entering on the confirmation page "
