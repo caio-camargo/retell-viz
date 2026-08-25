@@ -119,6 +119,45 @@ WHERE s.date BETWEEN '{first_day}' AND '{last_day}'
 GROUP BY 1 HAVING SUM(s.cost_micros) > 0
 """
 
+# Origin -> outcome, collapsing every middle step: which campaign produced the
+# submissions. The funnel above CANNOT answer this — its flows are aggregated
+# per step, so a session's identity is gone by column 2 — hence a second pass.
+ORIGIN_SQL = f"""
+WITH paid AS (SELECT * FROM {PAID_TBL}),
+pv AS (
+  SELECT b.sk, CASE WHEN p = '' OR p IS NULL THEN '/' ELSE p END AS path
+  FROM (
+    SELECT concat(user_pseudo_id, '|', CAST(ga_session_id AS STRING)) AS sk,
+           CASE WHEN length(lp) > 1 AND endswith(lp, '/')
+                THEN left(lp, length(lp) - 1) ELSE lp END AS p
+    FROM (
+      SELECT user_pseudo_id, ga_session_id,
+             regexp_replace(page_path, '^/({LOCALES})(/|$)', '/') AS lp
+      FROM {EVENTS}
+      WHERE device_web_hostname = '{SITE_HOST}' AND event_name = 'page_view'
+        AND ga_session_id IS NOT NULL AND page_path IS NOT NULL
+    ) a
+  ) b JOIN paid ON paid.sk = b.sk
+),
+kept AS (
+  SELECT * FROM pv WHERE path NOT IN ({",".join(f"'{p}'" for p in DROP_PAGES)})
+),
+agg AS (
+  SELECT sk,
+         MAX(CASE WHEN path = '{GATE}' THEN 1 ELSE 0 END) AS reached,
+         MAX(CASE WHEN path = '{CONFIRM}' THEN 1 ELSE 0 END) AS submitted
+  FROM kept GROUP BY sk
+)
+SELECT p.origin,
+       CAST(COUNT(*) AS STRING),
+       -- a confirmed submission implies the form was reached even if that
+       -- pageview never landed (blocked analytics, fast submit)
+       CAST(SUM(CASE WHEN a.reached = 1 OR a.submitted = 1 THEN 1 ELSE 0 END) AS STRING),
+       CAST(SUM(a.submitted) AS STRING)
+FROM agg a JOIN paid p ON p.sk = a.sk
+GROUP BY 1
+"""
+
 # form_only=True restricts the whole funnel to sessions that touch the gate at
 # any step — the flows are re-aggregated over that subset (an aggregate funnel
 # cannot be filtered after the fact; the counts don't carry per-session fate).
@@ -249,6 +288,12 @@ def main():
             for r in sql(camp_stats_sql(first_day, last_day))}
     print(f"campaign spend rows: {len(camp)} "
           f"(total ${sum(c['spend'] for c in camp.values()):,})")
+    origin_outcome = [{"origin": r[0], "sessions": int(r[1]),
+                       "reached": int(r[2]), "submitted": int(r[3])}
+                      for r in sql(ORIGIN_SQL)]
+    origin_outcome.sort(key=lambda r: (-r["submitted"], -r["sessions"]))
+    print("origin->outcome rows:", len(origin_outcome),
+          "| submissions attributed:", sum(r["submitted"] for r in origin_outcome))
 
     for form_only, dest in ((False, "sankey-ads.html"),
                             (True, "sankey-ads-form.html")):
@@ -297,6 +342,7 @@ def main():
                 **({"formOnly": True} if form_only else {}),
                 "formTouched": form_touched,
                 "campaigns": camp,
+                "originOutcome": origin_outcome,
                 "origins": sorted({a for (c, a, _b) in flows if c == 0}),
                 "included": included,
                 "excluded": ({"sessions entering on the confirmation page "

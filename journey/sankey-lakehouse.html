@@ -47,6 +47,17 @@
   text.head { font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
               fill: #8e93a6; }
   text.band { font-weight: 600; font-size: 11px; }
+  #oo { margin: 4px 0 2px; }
+  #oo h2 { font-size: 13px; font-weight: 650; margin: 18px 0 2px; letter-spacing: -.01em; }
+  #oo .lede { font-size: 11.5px; color: var(--dim); margin-bottom: 4px; max-width: 980px; }
+  table.oo { border-collapse: collapse; font-size: 11.5px; margin-top: 2px; }
+  table.oo th { text-align: right; color: var(--dim); font-weight: 600; padding: 2px 9px 3px 0;
+                border-bottom: 1px solid var(--line); white-space: nowrap; }
+  table.oo th:first-child, table.oo td:first-child { text-align: left; }
+  table.oo td { text-align: right; padding: 2px 9px 2px 0; border-bottom: 1px solid var(--line);
+                font-variant-numeric: tabular-nums; white-space: nowrap; }
+  table.oo tr.dead td { opacity: .55; }
+  table.oo td.win { color: var(--booked); font-weight: 600; }
   text.zoomtag { font-size: 9px; fill: var(--accent); opacity: .75; letter-spacing: .04em; }
   #zoombtn { font-size: 11px; cursor: pointer; color: var(--accent); border: 1px solid var(--line);
              border-radius: 5px; padding: 1px 7px; user-select: none; }
@@ -96,6 +107,7 @@
 </div>
 <div id="legend"></div>
 <div id="wrap"></div>
+<div id="oo"></div>
 <div id="tip"></div>
 <details>
   <summary>data table — the precise numbers a Sankey is bad at</summary>
@@ -209,10 +221,10 @@ const sessions = SK.included ?? DATA.meta.sessions;
 const excluded = Object.values(SK.excluded || {}).reduce((a, b) => a + b, 0);
 document.getElementById("meta").textContent = ADS
   ? (SK.formOnly
-      ? `${sessions.toLocaleString()} form-reaching paid sessions · ${totBooked.toLocaleString()} submit (${(totBooked / sessions * 100).toFixed(0)}%) · ${DATA.meta.date_range[0]} → ${DATA.meta.date_range[1]}`
-      : `${sessions.toLocaleString()} paid sessions · ${(SK.formTouched ?? 0).toLocaleString()} reach the form (${((SK.formTouched ?? 0) / sessions * 100).toFixed(2)}%) · ${totBooked.toLocaleString()} submit (${(totBooked / sessions * 100).toFixed(2)}%) · ${DATA.meta.date_range[0]} → ${DATA.meta.date_range[1]}`)
+      ? `${sessions.toLocaleString("en-US")} form-reaching paid sessions · ${totBooked.toLocaleString("en-US")} submit (${(totBooked / sessions * 100).toFixed(0)}%) · ${DATA.meta.date_range[0]} → ${DATA.meta.date_range[1]}`
+      : `${sessions.toLocaleString("en-US")} paid sessions · ${(SK.formTouched ?? 0).toLocaleString("en-US")} reach the form (${((SK.formTouched ?? 0) / sessions * 100).toFixed(2)}%) · ${totBooked.toLocaleString("en-US")} submit (${(totBooked / sessions * 100).toFixed(2)}%) · ${DATA.meta.date_range[0]} → ${DATA.meta.date_range[1]}`)
   : LAKE
-  ? `${sessions.toLocaleString()} sessions · ${totBooked.toLocaleString()} reach the form (${(totBooked / sessions * 100).toFixed(2)}%) · ${DATA.meta.pageviews.toLocaleString()} pageviews · ${DATA.meta.date_range[0]} → ${DATA.meta.date_range[1]}`
+  ? `${sessions.toLocaleString("en-US")} sessions · ${totBooked.toLocaleString("en-US")} reach the form (${(totBooked / sessions * 100).toFixed(2)}%) · ${DATA.meta.pageviews.toLocaleString("en-US")} pageviews · ${DATA.meta.date_range[0]} → ${DATA.meta.date_range[1]}`
   : ALL
   ? `${sessions} identified sessions · ${totBooked} reach the form (${SK.confirmed || 0} confirmed submissions) · ${excluded} duplicate/empty export rows dropped · ${DATA.meta.date_range[0]} → ${DATA.meta.date_range[1]}`
   : `${sessions} marketing sessions · ${totBooked} book · ${excluded} sessions never touch the site (excluded) · ${DATA.meta.date_range[0]} → ${DATA.meta.date_range[1]}`;
@@ -363,8 +375,8 @@ for (const list of cols) for (const n of list) {
         : ADS
         ? (() => {
             const cs = (SK.campaigns || {})[n.id];
-            const money = cs ? ` · $${cs.spend.toLocaleString()} spent in this window`
-                + (cs.clicks ? `, ${cs.clicks.toLocaleString()} ad clicks ($${(cs.spend / cs.clicks).toFixed(2)}/click)` : "")
+            const money = cs ? ` · $${cs.spend.toLocaleString("en-US")} spent in this window`
+                + (cs.clicks ? `, ${cs.clicks.toLocaleString("en-US")} ad clicks ($${(cs.spend / cs.clicks).toFixed(2)}/click)` : "")
                 + ` · $${(cs.spend / Math.max(n.out, 1)).toFixed(2)} per session landed` : "";
             return `${esc(n.id)}|${n.out} paid sessions from this campaign${money}`;
           })()
@@ -430,6 +442,94 @@ svg.addEventListener("mousemove", ev => {
   dim(t);
 });
 svg.addEventListener("mouseleave", () => { tip.style.display = "none"; dim(null); });
+/* ---------- origin -> outcome (every step collapsed) ---------- */
+// The funnel above cannot answer "which campaign produced the submissions" —
+// its ribbons are per-step aggregates, so session identity is gone by column 2.
+// This panel is a second, session-level pass over the same data.
+(() => {
+  const oo = document.getElementById("oo");
+  if (!oo) return;
+  const rows = SK.originOutcome;
+  if (!rows || !rows.length) { oo.innerHTML = ""; return; }
+  const camps = SK.campaigns || {};
+  const tot = rows.reduce((a, r) => a + r.submitted, 0);
+  const won = rows.filter(r => r.submitted > 0);
+  const money = o => camps[o] ? camps[o].spend : null;
+
+  const W = 1500, GAP2 = 9, PAD = 34;
+  const H = PAD * 2 + Math.max(150, won.length * 30);
+  const xL = 360, xR = 1120, NW2 = 13;
+  const usable = H - PAD * 2 - GAP2 * Math.max(0, won.length - 1);
+  const sc = tot ? usable / tot : 0;
+  const P = [];
+  P.push(`<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto">`);
+  let y = PAD, rOff = PAD;
+  const rh = Math.max(6, tot * sc);
+  for (const r of won) {
+    const h = Math.max(6, r.submitted * sc);
+    const rate = (100 * r.submitted / Math.max(r.sessions, 1)).toFixed(2);
+    const sp = money(r.origin);
+    const cost = sp != null ? ` · $${Math.round(sp / r.submitted).toLocaleString("en-US")} per submission` : "";
+    const tipTxt = `${esc(r.origin)}|${r.submitted} submission${r.submitted > 1 ? "s" : ""} from `
+      + `${r.sessions.toLocaleString("en-US")} sessions (${rate}%) · ${r.reached} reached the form`
+      + (sp != null ? ` · $${sp.toLocaleString("en-US")} spent${cost}` : "");
+    const y1 = y, y2 = rOff, mx = (xL + NW2 + xR) / 2;
+    P.push(`<path class="flow" d="M${xL + NW2},${y1} C${mx},${y1} ${mx},${y2} ${xR},${y2}`
+      + ` L${xR},${y2 + h} C${mx},${y2 + h} ${mx},${y1 + h} ${xL + NW2},${y1 + h} Z"`
+      + ` fill="${BOOKED_C}" opacity="${(0.30 + Math.min(0.4, r.submitted / 30)).toFixed(2)}"`
+      + ` data-tip="${tipTxt}"/>`);
+    P.push(`<rect class="node" x="${xL}" y="${y1}" width="${NW2}" height="${h}" rx="3"`
+      + ` fill="${BOOKED_C}" data-tip="${tipTxt}"/>`);
+    P.push(`<text x="${xL - 8}" y="${y1 + h / 2 + 3.5}" text-anchor="end">${esc(r.origin)}`
+      + `<tspan style="fill:var(--dim)"> · ${r.submitted} of ${r.sessions.toLocaleString("en-US")} (${rate}%)</tspan></text>`);
+    y += h + GAP2; rOff += h;
+  }
+  P.push(`<rect class="node" x="${xR}" y="${PAD}" width="${NW2}" height="${rh}" rx="3" fill="${BOOKED_C}"/>`);
+  P.push(`<text class="band" x="${xR + NW2 + 7}" y="${PAD + rh / 2 + 4}" style="fill:${BOOKED_C}">SUBMITTED · ${tot}</text>`);
+  P.push(`<text class="head" x="${xL + NW2 / 2}" y="${PAD - 12}" text-anchor="middle">origin</text>`);
+  P.push(`<text class="head" x="${xR + NW2 / 2}" y="${PAD - 12}" text-anchor="middle">outcome</text>`);
+  P.push(`</svg>`);
+
+  const dead = rows.filter(r => r.submitted === 0 && money(r.origin));
+  const deadSpend = dead.reduce((a, r) => a + money(r.origin), 0);
+  const fmt = v => v == null ? "—" : "$" + v.toLocaleString("en-US");
+  const tbl = `<table class="oo"><tr><th>origin</th><th>sessions</th><th>reached form</th>`
+    + `<th>submitted</th><th>submit rate</th><th>spend</th><th>$ / submission</th></tr>`
+    + rows.map(r => {
+        const sp = money(r.origin);
+        return `<tr class="${r.submitted ? "" : "dead"}"><td>${esc(r.origin)}</td>`
+          + `<td>${r.sessions.toLocaleString("en-US")}</td><td>${r.reached}</td>`
+          + `<td class="${r.submitted ? "win" : ""}">${r.submitted}</td>`
+          + `<td>${(100 * r.submitted / Math.max(r.sessions, 1)).toFixed(2)}%</td>`
+          + `<td>${fmt(sp)}</td>`
+          + `<td>${r.submitted && sp != null ? "$" + Math.round(sp / r.submitted).toLocaleString("en-US")
+                 : sp ? "no submissions" : "—"}</td></tr>`;
+      }).join("")
+    + `</table>`;
+
+  oo.innerHTML = `<h2>Submissions by origin — every step collapsed</h2>`
+    + `<div class="lede">Which campaign the ${tot} submissions actually came from, origin straight to `
+    + `outcome. Only submissions are drawn — the ${(100 - 100 * tot / (SK.included || 1)).toFixed(1)}% `
+    + `that did not submit is the chart above. Session-scoped: a visitor who arrives on an ad, leaves, `
+    + `and returns later through another channel is credited to that later session, so top-of-funnel `
+    + `campaigns are structurally undercredited here.`
+    + (dead.length ? ` <b>${dead.length} campaign${dead.length > 1 ? "s" : ""} spent `
+        + `$${deadSpend.toLocaleString("en-US")} and produced no submissions in this window.</b>` : "")
+    + `</div>` + P.join("") + tbl;
+
+  const osvg = oo.querySelector("svg");
+  osvg.addEventListener("mousemove", ev => {
+    const t = ev.target.closest("[data-tip]");
+    if (!t) { tip.style.display = "none"; return; }
+    const [title, detail] = t.dataset.tip.split("|");
+    tip.style.display = "block";
+    tip.style.left = Math.min(innerWidth - 330, ev.clientX + 14) + "px";
+    tip.style.top = (ev.clientY + 14) + "px";
+    tip.innerHTML = `<div class="t">${title}</div><div class="d">${detail}</div>`;
+  });
+  osvg.addEventListener("mouseleave", () => { tip.style.display = "none"; });
+})();
+
 /* ---------- table-view twin ---------- */
 (() => {
   const endAt = (c, id, kind) =>
