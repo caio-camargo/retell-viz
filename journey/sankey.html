@@ -153,6 +153,12 @@ const ORIGINS = new Set(DATA.sankey.origins || []);
 function nodeGroup(id) {
   if (id === APP_ID || id.startsWith("dashboard.")) return "dashboard";
   if (id.startsWith("docs.") || id === "(other docs pages)") return "docs";
+  // the page tail is bucketed by section now, so each bucket keeps its section's color
+  if (id.startsWith("(other")) {
+    if (/blog|glossary/.test(id)) return "blog";
+    if (/comparison|industry|use cases|feature|integration|partner|solution|customer/.test(id)) return "landing";
+    return "other";
+  }
   if (id === "homepage" || id === "/pricing" || id === "/enterprise-plan") return "core";
   if (id === "(blog & content)" || /^\/(blog|glossary)/.test(id)) return "blog";
   if (id === "(landing pages)" || /^\/(features|industry|use-cases|comparisons|integrations|partner|app-partner|case-study|solutions|ai-)/.test(id)) return "landing";
@@ -584,6 +590,7 @@ if (LAKE) {
     `funnel</a> is where booking outcomes live. Origins are measured attribution, not ` +
     `self-reported.`;
   document.getElementById("foot").innerHTML =
+    ` <b style="color:#e0a33a">Recent days undercount:</b> a consent-banner change from 2026-08-12 drops the session id on a growing share of pageviews (0% before, ~4% the week of Aug 10, ~20% the week of Aug 17); those pageviews cannot be assembled into a session and are excluded here. A fix is in progress.` +
     `Aggregate only — page paths and session counts, reduced inside the warehouse; no ` +
     `identifier is read or emitted. Marketing-site host only (the same property also ` +
     `collects the product and auth subdomains, which are <b>over 90% of pageviews</b> — an ` +
@@ -626,6 +633,7 @@ if (LAKE) {
     `EXIT — reaching the form is not converting. <b>Hover a campaign</b> for its spend, ` +
     `cost per click and cost per session in this window.`;
   document.getElementById("foot").innerHTML =
+    ` <b style="color:#e0a33a">Recent days undercount:</b> a consent-banner change from 2026-08-12 drops the session id on a growing share of pageviews (0% before, ~4% the week of Aug 10, ~20% the week of Aug 17); those pageviews cannot be assembled into a session and are excluded here. A fix is in progress.` +
     `Aggregate only — page paths and session counts, reduced inside the warehouse; no ` +
     `identifier is read or emitted. Marketing-site host only; <code>/careers</code> and ` +
     `<code>/about-us</code> excluded; locale-prefixed paths normalised onto their canonical ` +

@@ -53,7 +53,10 @@ SITE_HOST = "www.retellai.com"
 GATE = "/enterprise-plan"
 MAXSTEP = 6
 TOPN = 12
-LOCALES = "es|de|it|pt|fr|ja|ko|zh|nl|hi|id"
+# the site's ACTUAL 10 locales. The previous list invented fr/ko/zh/hi/id and
+# omitted sv, ar, el, da — ~12k pageviews that never folded onto their canonical
+# page, so /ar counted as a page distinct from the homepage.
+LOCALES = "es|de|ja|it|el|nl|sv|da|ar|pt"
 DROP_PAGES = ("/careers", "/about-us")
 
 
@@ -157,7 +160,16 @@ labeled AS (
          CASE WHEN s.path = '/' THEN 'homepage'
               WHEN s.path = '{GATE}' THEN '{GATE}'
               WHEN s.path IN (SELECT path FROM topn) THEN s.path
-              ELSE '(other site pages)' END AS node,
+              WHEN s.path LIKE '/blog%' OR s.path LIKE '/glossary%' THEN '(other blog)'
+              WHEN s.path LIKE '/comparisons/%' THEN '(other comparisons)'
+              WHEN s.path LIKE '/industry/%' THEN '(other industry)'
+              WHEN s.path LIKE '/use-cases/%' THEN '(other use cases)'
+              WHEN s.path LIKE '/features/%' THEN '(other features)'
+              WHEN s.path LIKE '/integrations%' THEN '(other integrations)'
+              WHEN s.path LIKE '/partner%' OR s.path LIKE '/app-partner%' THEN '(other partners)'
+              WHEN s.path LIKE '/customers%' OR s.path LIKE '/case-study%' THEN '(other customers)'
+              WHEN s.path LIKE '/solutions/%' OR s.path LIKE '/ai-%' THEN '(other solutions)'
+              ELSE '(other pages)' END AS node,
          s.path AS raw_path
   FROM stepped s
 )

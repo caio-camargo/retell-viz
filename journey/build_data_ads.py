@@ -51,9 +51,18 @@ TOPCAMP = 8   # named campaigns on the origin axis; the tail folds into one node
 # first, so '\|' reaches the regex engine as a bare alternation whose empty-left
 # branch matches every space (it silently turned "Comp - Poly AI" into
 # "Comp-PolyAI"). '\|' is what makes it a literal pipe.
-NAME_CLEAN = (r"regexp_replace(regexp_replace(regexp_replace(ch.name, "
-              r"'^ScalixAI \\| ', ''), ' \\| [0-9]{1,2} [A-Za-z]{3,9} [0-9]{4}$', ''), "
-              r"' \\| [A-Za-z]{3,9} [0-9]{4}$', '')")
+def _clean(expr):
+    r"""Strip the account prefix and launch-date suffix off a campaign name.
+
+    The pipe needs a DOUBLE backslash: Spark unescapes the string literal
+    first, so '\|' would reach the regex engine as a bare alternation whose
+    empty-left branch matches every space (it silently turned "Comp - Poly AI"
+    into "Comp-PolyAI").
+    """
+    return ("regexp_replace(regexp_replace(regexp_replace(EXPR, '^ScalixAI \\\\| ', ''), ' \\\\| [0-9]{1,2} [A-Za-z]{3,9} [0-9]{4}$', ''), ' \\\\| [A-Za-z]{3,9} [0-9]{4}$', '')").replace("EXPR", expr)
+
+NAME_CLEAN = _clean("ch.name")
+UTM_CLEAN = _clean("b.ucamp")
 
 # Session-level paid membership + which campaign brought it.
 # gclid/gad_campaign_id are Google-only signals; UTM decides the rest.
@@ -68,7 +77,12 @@ WITH base AS (
                   THEN 1 ELSE 0 END) AS li,
          MAX(CASE WHEN lower(coalesce(param_medium, '')) IN
                        ('cpc','ppc','paid','paid_social')
-                  THEN 1 ELSE 0 END) AS anypaid
+                  THEN 1 ELSE 0 END) AS anypaid,
+         -- manual tags are the fallback identity when the click id is missing
+         MAX(CASE WHEN lower(coalesce(param_medium, '')) IN
+                       ('cpc','ppc','paid','paid_social')
+                   AND coalesce(param_campaign, '') <> ''
+                  THEN param_campaign END) AS ucamp
   FROM {EVENTS}
   WHERE device_web_hostname = '{SITE_HOST}' AND ga_session_id IS NOT NULL
   GROUP BY 1
@@ -84,8 +98,10 @@ ch AS (
 ),
 lab AS (
   SELECT b.sk, b.g, b.li,
-         CASE WHEN b.cid IS NULL THEN NULL
-              ELSE COALESCE({NAME_CLEAN}, concat('campaign ', b.cid)) END AS nm
+         CASE WHEN b.cid IS NOT NULL
+                THEN COALESCE({NAME_CLEAN}, concat('campaign ', b.cid))
+              WHEN b.ucamp IS NOT NULL THEN {UTM_CLEAN}
+              ELSE NULL END AS nm
   FROM base b LEFT JOIN ch ON ch.id = CAST(b.cid AS BIGINT)
 ),
 rk AS (
@@ -225,7 +241,16 @@ labeled AS (
          CASE WHEN s.path = '/' THEN 'homepage'
               WHEN s.path = '{GATE}' THEN '{GATE}'
               WHEN s.path IN (SELECT path FROM topn) THEN s.path
-              ELSE '(other site pages)' END AS node,
+              WHEN s.path LIKE '/blog%' OR s.path LIKE '/glossary%' THEN '(other blog)'
+              WHEN s.path LIKE '/comparisons/%' THEN '(other comparisons)'
+              WHEN s.path LIKE '/industry/%' THEN '(other industry)'
+              WHEN s.path LIKE '/use-cases/%' THEN '(other use cases)'
+              WHEN s.path LIKE '/features/%' THEN '(other features)'
+              WHEN s.path LIKE '/integrations%' THEN '(other integrations)'
+              WHEN s.path LIKE '/partner%' OR s.path LIKE '/app-partner%' THEN '(other partners)'
+              WHEN s.path LIKE '/customers%' OR s.path LIKE '/case-study%' THEN '(other customers)'
+              WHEN s.path LIKE '/solutions/%' OR s.path LIKE '/ai-%' THEN '(other solutions)'
+              ELSE '(other pages)' END AS node,
          s.path AS raw_path
   FROM stepped s
 )
