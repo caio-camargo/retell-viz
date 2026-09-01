@@ -727,6 +727,12 @@ build();
 // page (ICP, identified, ads snapshots) is untouched.
 if (LAKE && CUBE) {
   const GATE_NODE = CUBE.meta.gate;
+  // The swapped-in sections carry no pageview total; drop the stale all-time figure
+  // from the headline rather than showing a number that belongs to another window.
+  if (!(SEL.t === "all" && SEL.w === "all")) {
+    const m = document.getElementById("meta");
+    if (m) m.innerHTML = m.innerHTML.replace(/ (?:·|·) [\d,]+ pageviews/, "");
+  }
   const W_LABEL = { all: "All time", "4w": "Last 4 weeks", "1w": "Last week", "1wp": "Prior week" };
   const T_LABEL = { all: "All traffic", ads: "Google Ads only",
                     smb: "SMB (1\u2013250 emp)", mm: "Mid-market (251\u20131K)", ent: "Enterprise (1K+)" };
