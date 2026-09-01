@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ICP Lead Journeys</title>
+<style>
+  :root {
+    color-scheme: light;
+    --surface: #fcfcfb; --page: #f9f9f7; --ink-1: #0b0b0b; --ink-2: #52514e;
+    --muted: #898781; --border: rgba(11,11,11,0.10);
+    --card: #ffffff; --card-stroke: #d6d5cd;
+    --accent: #2a78d6; --accent-faint: #eaf1fb;
+    --s-booked: #1c5fb8; --s-open: #5895da;
+    --grid: rgba(11,11,11,0.07);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --surface: #1a1a19; --page: #0d0d0d; --ink-1: #ffffff; --ink-2: #c3c2b7;
+      --muted: #898781; --border: rgba(255,255,255,0.10);
+      --card: #262625; --card-stroke: #3a3a37;
+      --accent: #3987e5; --accent-faint: #1d2735;
+      --s-booked: #5493e2; --s-open: #33619f;
+      --grid: rgba(255,255,255,0.08);
+    }
+  }
+  [data-theme="dark"] {
+    color-scheme: dark;
+    --surface: #1a1a19; --page: #0d0d0d; --ink-1: #ffffff; --ink-2: #c3c2b7;
+    --muted: #898781; --border: rgba(255,255,255,0.10);
+    --card: #262625; --card-stroke: #3a3a37;
+    --accent: #3987e5; --accent-faint: #1d2735;
+    --s-booked: #5493e2; --s-open: #33619f;
+    --grid: rgba(255,255,255,0.08);
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body { background: var(--page); color: var(--ink-1);
+    font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 28px clamp(16px, 3vw, 44px) 48px; }
+  main { max-width: 1220px; margin: 0 auto; }
+  .top { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; margin-bottom: 6px; flex-wrap: wrap; }
+  .top h1 { font-size: 20px; letter-spacing: -0.01em; }
+  .top a { color: var(--accent); text-decoration: none; font-size: 13px; }
+  .lede { color: var(--ink-2); font-size: 13px; max-width: 900px; margin-bottom: 16px; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 14px; }
+  .tile { background: var(--card); border: 1px solid var(--card-stroke); border-radius: 10px; padding: 12px 14px; }
+  .tile .v { font-size: 24px; font-weight: 700; letter-spacing: -0.01em; }
+  .tile .k { font-size: 11.5px; color: var(--ink-2); margin-top: 2px; }
+  .frame { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 14px; }
+  .frame h2 { font-size: 14px; margin-bottom: 2px; }
+  .frame .note { font-size: 12px; color: var(--ink-2); margin-bottom: 10px; }
+  .legend { display: flex; gap: 14px; font-size: 12px; color: var(--ink-2); margin-bottom: 6px; flex-wrap: wrap; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .sw { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+  svg { display: block; width: 100%; height: auto; }
+  .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+  .bar-row { display: grid; grid-template-columns: minmax(110px, 42%) 1fr 52px; gap: 8px; align-items: center; font-size: 12.5px; padding: 3px 0; }
+  .bar-row .lbl { color: var(--ink-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar-row .bar { height: 14px; border-radius: 4px; background: var(--s-booked); min-width: 2px; }
+  .bar-row .n { color: var(--ink-2); text-align: right; font-variant-numeric: tabular-nums; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { background: var(--accent-faint); border: 1px solid var(--card-stroke); border-radius: 20px; padding: 3px 10px; font-size: 12px; color: var(--ink-2); }
+  .chip b { color: var(--ink-1); }
+  .foot { font-size: 11.5px; color: var(--muted); max-width: 980px; }
+  .foot li { margin-bottom: 3px; }
+  #tip { position: fixed; pointer-events: none; background: var(--card); color: var(--ink-1);
+    border: 1px solid var(--card-stroke); border-radius: 8px; padding: 7px 10px; font-size: 12px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.12); display: none; z-index: 5; max-width: 260px; }
+  #tip .h { font-weight: 600; margin-bottom: 2px; }
+  #tip .r { color: var(--ink-2); }
+  .built { font-size: 11px; color: var(--muted); margin-top: -8px; margin-bottom: 14px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <h1>ICP lead journeys — who raises a hand, and the path they took</h1>
+    <a href="index.html">← all visualizations</a>
+  </div>
+  <p class="lede">Every enterprise-form lead routed through the scheduler since Nov 2025, classified
+    against the ICP model, with the website journey that preceded the submission reconstructed
+    per lead (journeys observable from Jul 19, 2026). Aggregates only — no lead identities.</p>
+  <p class="built" id="built"></p>
+
+  <div class="tiles" id="tiles"></div>
+
+  <div class="frame">
+    <h2>Weekly routed leads</h2>
+    <div class="note">Bars: ICP leads per week, split by booked vs not (see legend). Line: all routed leads, for scale.</div>
+    <div class="legend">
+      <span><span class="sw" style="background:var(--s-booked)"></span>ICP · booked</span>
+      <span><span class="sw" style="background:var(--s-open)"></span>ICP · not booked</span>
+      <span><span class="sw" style="background:var(--muted); height:3px; border-radius:2px;"></span>all routed</span>
+    </div>
+    <svg id="weekly" viewBox="0 0 1180 260" role="img" aria-label="Weekly routed leads with ICP and booked breakdown"></svg>
+    <details style="margin-top:8px"><summary style="cursor:pointer;font-size:12px;color:var(--ink-2)">View as table</summary>
+      <div style="max-height:260px;overflow:auto;margin-top:6px"><table id="weekly-table" style="border-collapse:collapse;font-size:12px;width:100%"></table></div>
+    </details>
+  </div>
+
+  <div class="cols">
+    <div class="frame">
+      <h2>Where ICP journeys land</h2>
+      <div class="note">First page of the session that ended in the submission (locale-folded). Last-visit view — long consideration over-credits the homepage.</div>
+      <div id="landing"></div>
+    </div>
+    <div class="frame">
+      <h2>Journey shape (ICP, observed journeys)</h2>
+      <div class="note" id="shape-note"></div>
+      <div class="tiles" id="shape-tiles" style="margin-bottom:0"></div>
+    </div>
+  </div>
+
+  <div class="cols">
+    <div class="frame">
+      <h2>“How did you hear about us”</h2>
+      <div class="note">Self-reported by ICP leads on the form.</div>
+      <div id="hear"></div>
+    </div>
+    <div class="frame">
+      <h2>UTM source on the submission</h2>
+      <div class="note">Captured on the routed submission — most arrive untagged.</div>
+      <div id="utm"></div>
+    </div>
+    <div class="frame">
+      <h2>Self-reported agent count (ICP)</h2>
+      <div class="note">Free-form field, banded.</div>
+      <div id="agents"></div>
+      <h2 style="margin-top:14px">Submission page language</h2>
+      <div class="note">Locale of the page the ICP lead submitted from.</div>
+      <div class="chips" id="locales"></div>
+    </div>
+  </div>
+
+  <div class="frame foot">
+    <b>Reading notes</b>
+    <ul style="margin: 6px 0 0 18px">
+      <li>Journeys are observable from <b>Jul 19, 2026</b> (analytics export start) and the lead↔session key
+          from <b>Jul 26</b> — earlier leads appear in counts but carry no journey.</li>
+      <li>Roughly one in five in-coverage leads shows no journey: corporate machines commonly block tracking.
+          Their absence skews journey stats toward smaller, less locked-down visitors.</li>
+      <li>ICP = matched routing rule for the enterprise team, or the CRM's ICP classifier
+          (company match / enterprise tier) where the rule is unobservable.</li>
+      <li>Booked ≠ held: attendance is not reliably recorded at the scheduler, so the funnel stops at booked/canceled.</li>
+    </ul>
+  </div>
+</main>
+<div id="tip"></div>
+
+<script type="module">
+let DATA = /*DATA-START*/{"utm":[{"k":"google","n":256},{"k":"chatgpt.com","n":58},{"k":"adwords","n":35},{"k":"direct","n":5},{"k":"sendinblue","n":1}],"hear":[{"k":"google_search","n":1527},{"k":"chatgpt","n":993},{"k":"other","n":494},{"k":"recommendation","n":312},{"k":"youtube","n":135},{"k":"source","n":98},{"k":"product_hunt","n":42},{"k":"linkedin","n":39},{"k":"reddit","n":26},{"k":"twitter","n":16},{"k":"blogs","n":12},{"k":"competitor","n":8},{"k":"instagram","n":3},{"k":"conference","n":1}],"meta":{"to":"2026-09-01","from":"2025-11-01","journey_ok":1168,"journeys_since":"2026-07-19","journey_eligible":1646},"shape":{"n":403,"p75_pages":7,"median_pages":4,"same_day_share":0.824,"median_sessions":1,"multi_session_share":0.303,"median_days_considering":0.00475653935185185},"teams":[{"k":"unknown","n":5363,"booked":2160},{"k":"other","n":3822,"booked":3822},{"k":"team_b","n":1045,"booked":1045},{"k":"partner","n":599,"booked":599},{"k":"team_a","n":275,"booked":275}],"agents":[{"k":"50-99","n":155},{"k":"10-49","n":623},{"k":"100-499","n":336},{"k":"1-9","n":1375},{"k":"500+","n":129}],"funnel":{"all":{"booked":7901,"routed":11104,"canceled":1253},"icp":{"booked":2903,"routed":3717,"canceled":373}},"weekly":[{"wk":"2025-10-27","icp":2,"booked":18,"routed":23,"icp_booked":2},{"wk":"2025-11-03","icp":59,"booked":106,"routed":192,"icp_booked":42},{"wk":"2025-11-10","icp":63,"booked":148,"routed":219,"icp_booked":53},{"wk":"2025-11-17","icp":75,"booked":152,"routed":200,"icp_booked":54},{"wk":"2025-11-24","icp":54,"booked":116,"routed":153,"icp_booked":44},{"wk":"2025-12-01","icp":56,"booked":135,"routed":179,"icp_booked":45},{"wk":"2025-12-08","icp":53,"booked":121,"routed":155,"icp_booked":42},{"wk":"2025-12-15","icp":56,"booked":145,"routed":176,"icp_booked":48},{"wk":"2025-12-22","icp":34,"booked":138,"routed":185,"icp_booked":29},{"wk":"2025-12-29","icp":39,"booked":100,"routed":135,"icp_booked":33},{"wk":"2026-01-05","icp":68,"booked":174,"routed":224,"icp_booked":51},{"wk":"2026-01-12","icp":87,"booked":211,"routed":262,"icp_booked":66},{"wk":"2026-01-19","icp":86,"booked":181,"routed":238,"icp_booked":77},{"wk":"2026-01-26","icp":86,"booked":152,"routed":273,"icp_booked":65},{"wk":"2026-02-02","icp":80,"booked":150,"routed":261,"icp_booked":53},{"wk":"2026-02-09","icp":81,"booked":131,"routed":253,"icp_booked":45},{"wk":"2026-02-16","icp":97,"booked":158,"routed":267,"icp_booked":67},{"wk":"2026-02-23","icp":93,"booked":195,"routed":321,"icp_booked":68},{"wk":"2026-03-02","icp":101,"booked":227,"routed":292,"icp_booked":85},{"wk":"2026-03-09","icp":153,"booked":261,"routed":334,"icp_booked":124},{"wk":"2026-03-16","icp":115,"booked":221,"routed":278,"icp_booked":92},{"wk":"2026-03-23","icp":87,"booked":201,"routed":260,"icp_booked":67},{"wk":"2026-03-30","icp":92,"booked":181,"routed":237,"icp_booked":72},{"wk":"2026-04-06","icp":85,"booked":191,"routed":258,"icp_booked":71},{"wk":"2026-04-13","icp":102,"booked":225,"routed":290,"icp_booked":91},{"wk":"2026-04-20","icp":102,"booked":216,"routed":295,"icp_booked":81},{"wk":"2026-04-27","icp":83,"booked":183,"routed":276,"icp_booked":65},{"wk":"2026-05-04","icp":89,"booked":190,"routed":277,"icp_booked":67},{"wk":"2026-05-11","icp":119,"booked":211,"routed":310,"icp_booked":96},{"wk":"2026-05-18","icp":93,"booked":193,"routed":259,"icp_booked":73},{"wk":"2026-05-25","icp":93,"booked":218,"routed":276,"icp_booked":75},{"wk":"2026-06-01","icp":112,"booked":254,"routed":338,"icp_booked":94},{"wk":"2026-06-08","icp":120,"booked":223,"routed":350,"icp_booked":89},{"wk":"2026-06-15","icp":118,"booked":225,"routed":341,"icp_booked":81},{"wk":"2026-06-22","icp":84,"booked":199,"routed":268,"icp_booked":71},{"wk":"2026-06-29","icp":86,"booked":201,"routed":270,"icp_booked":75},{"wk":"2026-07-06","icp":73,"booked":190,"routed":256,"icp_booked":56},{"wk":"2026-07-13","icp":93,"booked":233,"routed":304,"icp_booked":79},{"wk":"2026-07-20","icp":79,"booked":191,"routed":257,"icp_booked":65},{"wk":"2026-07-27","icp":94,"booked":192,"routed":293,"icp_booked":68},{"wk":"2026-08-03","icp":105,"booked":198,"routed":278,"icp_booked":84},{"wk":"2026-08-10","icp":90,"booked":185,"routed":267,"icp_booked":63},{"wk":"2026-08-17","icp":77,"booked":161,"routed":244,"icp_booked":53},{"wk":"2026-08-24","icp":86,"booked":167,"routed":229,"icp_booked":67},{"wk":"2026-08-31","icp":17,"booked":33,"routed":51,"icp_booked":15}],"landing":[{"k":"/","n":227,"booked":171},{"k":"/enterprise-plan","n":95,"booked":64},{"k":"/pricing","n":23,"booked":20},{"k":"/features/book-appointments","n":3,"booked":3},{"k":"/use-cases/receptionists","n":3,"booked":2},{"k":"/blog/best-ai-voice-agents-for-customer-support","n":2,"booked":1},{"k":"/industry/healthcare-industry","n":2,"booked":2},{"k":"/features/call-transfer","n":2,"booked":2},{"k":"/features/knowledge-base","n":2,"booked":1},{"k":"/industry/debt-collection","n":2,"booked":2},{"k":"/ai-appointment-setter","n":2,"booked":2},{"k":"/contact","n":2,"booked":2},{"k":"/blog/10-best-ai-answering-services","n":2,"booked":2},{"k":"/industry/financial-services","n":2,"booked":1},{"k":"/blog/ai-cold-calling","n":2,"booked":2},{"k":"/plan-enterprise","n":2,"booked":1},{"k":"/ai-call-phone-agents","n":2,"booked":1},{"k":"/piano-enterprise","n":2,"booked":1},{"k":"/about-us","n":2,"booked":2},{"k":"/integrations/go-high-level","n":1,"booked":1}],"locales":[{"k":"en","n":3655},{"k":"es","n":34},{"k":"pt","n":7},{"k":"de","n":7},{"k":"it","n":6},{"k":"ja","n":5},{"k":"ar","n":1},{"k":"nl","n":1},{"k":"da","n":1}],"industry":[{"k":"Healthcare","n":136},{"k":"Technology","n":125},{"k":"Other","n":125},{"k":"Finance","n":83},{"k":"Consulting","n":78},{"k":"Retail","n":45},{"k":"Construction","n":41},{"k":"Insurance","n":38},{"k":"Education","n":22},{"k":"Telecommunications","n":21},{"k":"Transportation","n":18},{"k":"Media","n":17},{"k":"Shipping","n":16},{"k":"FoodAndBeverage","n":15},{"k":"Government","n":13}]}/*DATA-END*/;
+
+const LIVE_KEY = /*LIVE-KEY*/"icp-journeys"/*LIVE-KEY-END*/;
+let BUILT_AT = null;
+if (LIVE_KEY) {
+  try {
+    const r = await fetch("https://xtafcezyayqcscdaaspo.supabase.co/rest/v1/viz_payloads?key=eq."
+        + LIVE_KEY + "&select=payload,built_at",
+      { headers: { apikey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh0YWZjZXp5YXlxY3NjZGFhc3BvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU0OTYwNTYsImV4cCI6MjEwMTA3MjA1Nn0.6reVt0Y2DE4bQWeUVt2K7KLfkm0hvMiY1AhdKXrFcsA" } });
+    const rows = await r.json();
+    if (r.ok && rows.length && rows[0].payload && rows[0].payload.weekly) {
+      DATA = rows[0].payload;
+      BUILT_AT = rows[0].built_at;
+    }
+  } catch (_e) { /* embedded snapshot stands */ }
+}
+
+const $ = (id) => document.getElementById(id);
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const fmt = (n) => Number(n).toLocaleString("en-US");
+const pct = (x) => Math.round(x * 100) + "%";
+
+// ---- tooltip
+const tip = $("tip");
+function showTip(ev, html) {
+  tip.innerHTML = html; tip.style.display = "block";
+  const pad = 14, w = tip.offsetWidth, h = tip.offsetHeight;
+  let x = ev.clientX + pad, y = ev.clientY + pad;
+  if (x + w > innerWidth - 8) x = ev.clientX - w - pad;
+  if (y + h > innerHeight - 8) y = ev.clientY - h - pad;
+  tip.style.left = x + "px"; tip.style.top = y + "px";
+}
+const hideTip = () => tip.style.display = "none";
+
+// ---- header
+const M = DATA.meta, F = DATA.funnel;
+$("built").textContent = "Window " + M.from + " → " + M.to
+  + (BUILT_AT ? " · data refreshed " + BUILT_AT.slice(0, 10) : " · embedded snapshot");
+
+// ---- stat tiles
+const icpBookRate = F.icp.booked / F.icp.routed;
+$("tiles").innerHTML = [
+  [fmt(F.all.routed), "leads routed (all)"],
+  [fmt(F.icp.routed), "ICP leads"],
+  [pct(icpBookRate), "ICP booked a meeting"],
+  [fmt(M.journey_ok), "journeys captured"],
+  [pct(M.journey_ok / Math.max(M.journey_eligible, 1)), "journey coverage (since Jul 19)"],
+].map(([v, k]) => `<div class="tile"><div class="v">${v}</div><div class="k">${k}</div></div>`).join("");
+
+// ---- weekly chart
+{
+  const W = 1180, H = 260, L = 44, R = 10, T = 12, B = 34;
+  const wk = DATA.weekly;
+  const max = Math.max(...wk.map(d => d.routed));
+  const iw = (W - L - R) / wk.length;
+  const bw = Math.max(2, iw - 2);
+  const y = (v) => T + (H - T - B) * (1 - v / max);
+  const sv = [];
+  // gridlines: 4 recessive horizontals
+  for (let g = 1; g <= 4; g++) {
+    const gv = max * g / 4, gy = y(gv);
+    sv.push(`<line x1="${L}" x2="${W - R}" y1="${gy}" y2="${gy}" stroke="var(--grid)"/>`);
+    sv.push(`<text x="${L - 6}" y="${gy + 4}" text-anchor="end" font-size="10.5" fill="var(--muted)">${Math.round(gv)}</text>`);
+  }
+  wk.forEach((d, i) => {
+    const x = L + i * iw + 1;
+    const yTop = y(d.icp), yMid = y(d.icp_booked), y0 = y(0);
+    if (d.icp > d.icp_booked)
+      sv.push(`<rect data-i="${i}" x="${x}" y="${yTop}" width="${bw}" height="${Math.max(0, yMid - yTop - (d.icp_booked ? 2 : 0))}" rx="3" fill="var(--s-open)"/>`);
+    if (d.icp_booked)
+      sv.push(`<rect data-i="${i}" x="${x}" y="${yMid}" width="${bw}" height="${y0 - yMid}" rx="3" fill="var(--s-booked)"/>`);
+  });
+  const line = wk.map((d, i) =>
+    (i ? "L" : "M") + (L + i * iw + iw / 2).toFixed(1) + " " + y(d.routed).toFixed(1)).join(" ");
+  sv.push(`<path d="${line}" fill="none" stroke="var(--muted)" stroke-width="2" opacity="0.85"/>`);
+  // x labels: ~ every 8th week
+  wk.forEach((d, i) => {
+    if (i % 8 === 0 || i === wk.length - 1)
+      sv.push(`<text x="${L + i * iw + iw / 2}" y="${H - 12}" text-anchor="middle" font-size="10.5" fill="var(--muted)">${d.wk.slice(2)}</text>`);
+  });
+  // hover hit zones (full column height, bigger than the mark)
+  wk.forEach((d, i) => {
+    sv.push(`<rect data-i="${i}" x="${L + i * iw}" y="${T}" width="${iw}" height="${H - T - B}" fill="transparent"/>`);
+  });
+  const el = $("weekly");
+  el.innerHTML = sv.join("");
+  el.addEventListener("mousemove", (ev) => {
+    const t = ev.target.closest("[data-i]");
+    if (!t) return hideTip();
+    const d = wk[+t.dataset.i];
+    showTip(ev, `<div class="h">week of ${d.wk}</div>` +
+      `<div class="r">${fmt(d.routed)} routed · ${fmt(d.icp)} ICP</div>` +
+      `<div class="r">${fmt(d.icp_booked)} ICP booked (${d.icp ? pct(d.icp_booked / d.icp) : "—"})</div>`);
+  });
+  el.addEventListener("mouseleave", hideTip);
+  $("weekly-table").innerHTML =
+    "<tr><th align='left'>week</th><th align='right'>routed</th><th align='right'>ICP</th><th align='right'>ICP booked</th></tr>" +
+    wk.map(d => `<tr><td style="padding:2px 8px 2px 0">${d.wk}</td><td align="right">${fmt(d.routed)}</td>` +
+      `<td align="right">${fmt(d.icp)}</td><td align="right">${fmt(d.icp_booked)}</td></tr>`).join("");
+}
+
+// ---- horizontal bar lists
+function barList(el, rows, tipFn) {
+  const max = Math.max(...rows.map(r => r.n));
+  el.innerHTML = rows.map((r, i) =>
+    `<div class="bar-row" data-i="${i}"><div class="lbl" title="${r.k}">${r.k}</div>` +
+    `<div><div class="bar" style="width:${Math.max(2, r.n / max * 100)}%"></div></div>` +
+    `<div class="n">${fmt(r.n)}</div></div>`).join("");
+  if (tipFn) {
+    el.addEventListener("mousemove", (ev) => {
+      const t = ev.target.closest("[data-i]");
+      t ? showTip(ev, tipFn(rows[+t.dataset.i])) : hideTip();
+    });
+    el.addEventListener("mouseleave", hideTip);
+  }
+}
+barList($("landing"), DATA.landing.slice(0, 10),
+  (r) => `<div class="h">${r.k}</div><div class="r">${fmt(r.n)} ICP journeys land here · ${fmt(r.booked)} booked</div>`);
+barList($("hear"), DATA.hear.slice(0, 8));
+barList($("utm"), DATA.utm.slice(0, 8));
+
+// agent bands in fixed order
+const ORDER = ["1-9", "10-49", "50-99", "100-499", "500+"];
+barList($("agents"), ORDER.map(k => ({ k, n: (DATA.agents.find(a => a.k === k) || {}).n || 0 })));
+
+// ---- journey shape
+const S = DATA.shape;
+$("shape-note").textContent = `${fmt(S.n)} ICP leads with an observed pre-submission journey.`;
+$("shape-tiles").innerHTML = [
+  [S.median_pages, "median pages before submitting"],
+  [S.median_sessions, "median sessions"],
+  [pct(S.multi_session_share), "came back before submitting"],
+  [pct(S.same_day_share), "submitted same day as first touch"],
+].map(([v, k]) => `<div class="tile"><div class="v">${v}</div><div class="k">${k}</div></div>`).join("");
+
+// ---- locales
+const totLoc = DATA.locales.reduce((a, b) => a + b.n, 0);
+$("locales").innerHTML = DATA.locales
+  .sort((a, b) => b.n - a.n)
+  .map(l => `<span class="chip"><b>${l.k}</b> ${fmt(l.n)} (${(l.n / totLoc * 100).toFixed(1)}%)</span>`)
+  .join("");
+</script>
+</body>
+</html>
