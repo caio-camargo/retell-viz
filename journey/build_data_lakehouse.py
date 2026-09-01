@@ -413,7 +413,12 @@ def main():
         dst.write_text((HERE / twin).read_text(encoding="utf-8"), encoding="utf-8")
         html = dst.read_text(encoding="utf-8")
         i, j = html.index(s) + len(s), html.index(e)
-        dst.write_text(html[:i] + js + html[j:], encoding="utf-8")
+        html = html[:i] + js + html[j:]
+        # these copies are served live: point them at the daily-refreshed payload
+        # (the injected data above stays behind as the offline fallback)
+        html = html.replace("/*LIVE-KEY*/null/*LIVE-KEY-END*/",
+                            '/*LIVE-KEY*/"journey-lakehouse"/*LIVE-KEY-END*/', 1)
+        dst.write_text(html, encoding="utf-8")
         print(f"wrote {dest}")
     # ASCII only: the default Windows console codepage cannot encode arrows
     print(f"{included:,} sessions, {reached:,} reached the form "
