@@ -131,17 +131,44 @@ let DATA = /*DATA-START*/{"meta":{"source":"ICP lead journeys, retellai.com prop
 // payload is fetched from the serving table and replaces the embedded snapshot, which
 // stays behind as the offline fallback. The api key is the public read-only client key.
 const LIVE_KEY = /*LIVE-KEY*/null/*LIVE-KEY-END*/;
+// Selected view (dashboard controls): w = window (all|4w|1w|1wp), t = audience
+// (all traffic | google-ads only | smb | mm | ent). Non-default views come from the
+// journey-cube payload; tiers are the IDENTIFIED-visitor population, not all traffic.
+let CUBE = null;
+const SEL = { w: "all", t: "all" };
+const CUBE_COMBOS = { all: ["all", "4w", "1w", "1wp"], ads: ["all", "4w", "1w"],
+                      smb: ["all", "4w"], mm: ["all", "4w"], ent: ["all", "4w"] };
 if (LIVE_KEY) {
+  const SB_URL = "https://xtafcezyayqcscdaaspo.supabase.co/rest/v1/viz_payloads";
+  const SB_HDR = { headers: { apikey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh0YWZjZXp5YXlxY3NjZGFhc3BvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU0OTYwNTYsImV4cCI6MjEwMTA3MjA1Nn0.6reVt0Y2DE4bQWeUVt2K7KLfkm0hvMiY1AhdKXrFcsA" } };
   try {
-    const r = await fetch("https://xtafcezyayqcscdaaspo.supabase.co/rest/v1/viz_payloads?key=eq."
-        + LIVE_KEY + "&select=payload,built_at",
-      { headers: { apikey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh0YWZjZXp5YXlxY3NjZGFhc3BvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU0OTYwNTYsImV4cCI6MjEwMTA3MjA1Nn0.6reVt0Y2DE4bQWeUVt2K7KLfkm0hvMiY1AhdKXrFcsA" } });
+    const r = await fetch(SB_URL + "?key=eq." + LIVE_KEY + "&select=payload,built_at", SB_HDR);
     const rows = await r.json();
     if (r.ok && rows.length && rows[0].payload && rows[0].payload.sankey) {
       DATA = rows[0].payload;
       DATA.meta.built_at = rows[0].built_at;
     }
   } catch (_e) { /* embedded snapshot stands */ }
+  try {
+    const q = new URLSearchParams(location.search);
+    const w = q.get("w") || "all", t = q.get("t") || "all";
+    if ((CUBE_COMBOS[t] || []).includes(w)) { SEL.w = w; SEL.t = t; }
+    const r2 = await fetch(SB_URL + "?key=eq.journey-cube&select=payload,built_at", SB_HDR);
+    const rows2 = await r2.json();
+    if (r2.ok && rows2.length && rows2[0].payload && rows2[0].payload.sections) {
+      CUBE = rows2[0].payload;
+    }
+    if (CUBE && !(SEL.t === "all" && SEL.w === "all")) {
+      const sec = CUBE.sections[SEL.t + "|" + SEL.w];
+      if (sec && sec.sankey) {
+        DATA.sankey = sec.sankey;
+        DATA.meta.sessions = sec.meta.sessions;
+        DATA.meta.population = sec.meta.population;
+        DATA.meta.date_range = sec.meta.window ||
+          (sec.meta.population === "warmly" ? CUBE.meta.warmly_range : DATA.meta.date_range);
+      } else { SEL.w = "all"; SEL.t = "all"; }
+    }
+  } catch (_e) { /* cube missing: default view still works */ }
 }
 
 
@@ -692,6 +719,193 @@ if (LAKE) {
   paint();
 })();
 build();
+
+// ------------------------------------------------------------------------------
+// Dashboard layer (live warehouse view only): audience/window controls + the
+// reporting section — where sessions leak, what converts, and week-over-week.
+// Renders only when the cube payload is present; every other variant of this
+// page (ICP, identified, ads snapshots) is untouched.
+if (LAKE && CUBE) {
+  const GATE_NODE = CUBE.meta.gate;
+  const W_LABEL = { all: "All time", "4w": "Last 4 weeks", "1w": "Last week", "1wp": "Prior week" };
+  const T_LABEL = { all: "All traffic", ads: "Google Ads only",
+                    smb: "SMB (1\u2013250 emp)", mm: "Mid-market (251\u20131K)", ent: "Enterprise (1K+)" };
+
+  document.head.insertAdjacentHTML("beforeend", `<style>
+    #ctl { display:flex; gap:10px; align-items:center; flex-wrap:wrap; padding:6px 22px 2px; }
+    #ctl label { font-size:11px; color:var(--dim); letter-spacing:.05em; text-transform:uppercase; }
+    #ctl select { background:var(--panel); color:var(--text); border:1px solid var(--line);
+                  border-radius:6px; font-size:12px; padding:3px 6px; }
+    #ctl .note { font-size:11px; color:#d9b64a; max-width:640px; }
+    #report { padding: 6px 22px 26px; max-width: 1080px; }
+    #report h2 { font-size:13px; font-weight:650; margin:20px 0 2px; letter-spacing:-.01em; }
+    #report .lede { font-size:11.5px; color:var(--dim); margin-bottom:6px; max-width:980px; }
+    #report .cards { display:flex; flex-wrap:wrap; gap:10px; }
+    #report .card { background:var(--panel); border:1px solid var(--line); border-radius:10px;
+                    padding:9px 12px; min-width:215px; flex:1 1 215px; max-width:330px; }
+    #report .card .h { font-weight:650; margin-bottom:3px; }
+    #report .card .kv { font-size:11.5px; color:var(--dim); font-variant-numeric:tabular-nums; }
+    #report .card .kv b { color:var(--text); }
+    #report .card .lk { font-size:11px; color:var(--dim); margin-top:4px; }
+    #report .card .lk b { color:var(--text); font-weight:600; }
+    #report .up { color:var(--booked); } #report .dn { color:#e06a5a; }
+  </style>`);
+
+  // ---- controls -------------------------------------------------------------
+  const sub = document.getElementById("sub");
+  const ctl = document.createElement("div");
+  ctl.id = "ctl";
+  const mkSel = (opts, cur) => opts.map(([v, l]) =>
+    `<option value="${v}"${v === cur ? " selected" : ""}>${l}</option>`).join("");
+  ctl.innerHTML =
+    `<label>audience</label><select id="selT">${
+      mkSel(Object.keys(CUBE_COMBOS).map(t => [t, T_LABEL[t]]), SEL.t)}</select>` +
+    `<label>window</label><select id="selW">${
+      mkSel(CUBE_COMBOS[SEL.t].map(w => [w, W_LABEL[w]]), SEL.w)}</select>` +
+    (["smb", "mm", "ent"].includes(SEL.t)
+      ? `<span class="note">\u26a0 Identified-company sessions only (reverse-IP, ${
+          CUBE.meta.tiers[SEL.t]}) \u2014 a smaller, company-biased population than the
+          all-traffic views; history from ${CUBE.meta.warmly_range[0]}.</span>`
+      : SEL.t === "ads"
+        ? `<span class="note">Sessions arriving from a Google Ads click.</span>` : "");
+  sub.after(ctl);
+  const nav = () => {
+    const t = document.getElementById("selT").value;
+    let w = document.getElementById("selW").value;
+    if (!CUBE_COMBOS[t].includes(w)) w = "all";
+    const q = new URLSearchParams();
+    if (t !== "all") q.set("t", t);
+    if (w !== "all") q.set("w", w);
+    location.search = q.toString();
+  };
+  document.getElementById("selT").onchange = nav;
+  document.getElementById("selW").onchange = nav;
+
+  // ---- report data helpers --------------------------------------------------
+  const PW = CUBE.pageWeekly, TPW = CUBE.tierPageWeekly, WIN = CUBE.meta.windows;
+  const TIER = ["smb", "mm", "ent"].includes(SEL.t) ? SEL.t : null;
+  const inWin = (wsel) => {
+    if (wsel === "all") return () => true;
+    const [ws, we] = WIN[wsel];
+    return (wk) => wk >= ws && wk <= we;
+  };
+  const scopeRows = (wsel, origin) => {
+    const f = inWin(wsel);
+    const src = TIER ? TPW.filter(r => r.tier === TIER)
+      : origin ? PW.filter(r => r.origin === origin)
+      : SEL.t === "ads" ? PW.filter(r => r.origin === "google ads") : PW;
+    return src.filter(r => f(r.wk));
+  };
+  const perNode = (rows) => {
+    const m = new Map();
+    for (const r of rows) {
+      const o = m.get(r.node) || { node: r.node, vis: 0, ent: 0, ex: 0, rf: 0 };
+      o.vis += r.vis; o.ent += r.ent; o.ex += r.ex; o.rf += r.rf;
+      m.set(r.node, o);
+    }
+    return [...m.values()];
+  };
+  const headline = (nodes) => {
+    const sessions = nodes.reduce((s, n) => s + n.ent, 0);
+    const g = nodes.find(n => n.node === GATE_NODE);
+    return { sessions, reach: g ? g.vis : 0 };
+  };
+  const pct = (a, b) => b ? (100 * a / b).toFixed(1) + "%" : "\u2013";
+  const delta = (a, b) => {
+    if (!b) return "\u2013";
+    const d = 100 * (a - b) / b;
+    const cls = d >= 0 ? "up" : "dn";
+    return `<span class="${cls}">${d >= 0 ? "+" : ""}${d.toFixed(0)}%</span>`;
+  };
+  const esc = (x) => x.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+
+  // ---- report DOM -----------------------------------------------------------
+  const rep = document.createElement("div");
+  rep.id = "report";
+  const wLabel = W_LABEL[SEL.w].toLowerCase();
+  const popLabel = TIER ? T_LABEL[SEL.t] + " identified sessions"
+    : SEL.t === "ads" ? "Google Ads sessions" : "all marketing-site sessions";
+  let html = "";
+
+  // §1 simplified per-source cards (all-traffic + ads views; tiers have no source split)
+  if (!TIER) {
+    const origins = [...new Set(PW.map(r => r.origin))]
+      .map(o => {
+        const nodesAll = perNode(scopeRows(SEL.w, o));
+        const h = headline(nodesAll);
+        const w1 = headline(perNode(PW.filter(r => r.origin === o).filter(r => inWin("1w")(r.wk))));
+        const w0 = headline(perNode(PW.filter(r => r.origin === o).filter(r => inWin("1wp")(r.wk))));
+        const minVis = Math.max(30, Math.round(h.sessions * 0.005));
+        const leaks = nodesAll
+          .filter(n => n.node !== GATE_NODE && n.vis >= minVis)
+          .sort((a, b) => b.ex / b.vis - a.ex / a.vis).slice(0, 3);
+        return { o, h, w1, w0, leaks };
+      })
+      .filter(x => x.h.sessions > 0)
+      .sort((a, b) => b.h.sessions - a.h.sessions);
+    html += `<h2>How each source reacts \u2014 ${wLabel}</h2>
+      <div class="lede">Per acquisition source: volume, share reaching the demo-request form,
+      and the pages where that source\u2019s sessions most often END (its leaks \u2014 share of
+      the source\u2019s visitors to the page whose journey stops there). WoW compares the last
+      two complete weeks regardless of the window picked above.</div>
+      <div class="cards">` + origins.map(({ o, h, w1, w0, leaks }) => `
+      <div class="card"><div class="h">${esc(o)}</div>
+        <div class="kv"><b>${h.sessions.toLocaleString("en-US")}</b> sessions \u00b7
+          reach form <b>${pct(h.reach, h.sessions)}</b> \u00b7 WoW ${delta(w1.sessions, w0.sessions)}</div>
+        <div class="lk">leaks: ${leaks.map(n =>
+          `<b>${esc(n.node)}</b> ${pct(n.ex, n.vis)}`).join(" \u00b7 ") || "\u2013"}</div>
+      </div>`).join("") + `</div>`;
+  }
+
+  // §2 + §3: leak table and conversion table for the CURRENT audience
+  const nodes = perNode(scopeRows(SEL.w));
+  const H = headline(nodes);
+  const minVis = Math.max(30, Math.round(H.sessions * 0.005));
+  const eligible = nodes.filter(n => n.node !== GATE_NODE && n.vis >= minVis);
+  const leakRows = [...eligible].sort((a, b) => b.ex / b.vis - a.ex / a.vis).slice(0, 12);
+  const convRows = [...eligible].sort((a, b) => b.rf / b.vis - a.rf / a.vis).slice(0, 10);
+  const tbl = (rows) => `<table class="oo"><tr><th>page</th><th>sessions visiting</th>
+      <th>end here</th><th>drop-off</th><th>reach form after</th></tr>` +
+    rows.map(n => `<tr><td>${esc(n.node)}</td><td>${n.vis.toLocaleString("en-US")}</td>
+      <td>${n.ex.toLocaleString("en-US")}</td><td>${pct(n.ex, n.vis)}</td>
+      <td class="win">${pct(n.rf, n.vis)}</td></tr>`).join("") + `</table>`;
+  html += `<h2>Where sessions leak \u2014 ${popLabel}, ${wLabel}</h2>
+    <div class="lede">Pages ranked by drop-off rate: the share of sessions touching the page
+    whose journey ends there. Pages under ${minVis} visiting sessions are excluded;
+    \u201c(other \u2026)\u201d rows are long-tail buckets. Reloads collapsed; ending on
+    ${GATE_NODE} itself is counted as reaching the form, not as a leak.</div>` + tbl(leakRows);
+  html += `<h2>Most likely to lead to the form \u2014 ${popLabel}, ${wLabel}</h2>
+    <div class="lede">Pages ranked by the probability that a session touching them goes on to
+    reach the demo-request form at any later step. Association, not causation \u2014 a page can
+    rank high because motivated visitors seek it out.</div>` + tbl(convRows);
+
+  // §4 week-over-week
+  const w1k = WIN["1w"], w0k = WIN["1wp"];
+  const wkAgg = (origin, wsel) => {
+    const f = inWin(wsel);
+    const rows = TIER ? TPW.filter(r => r.tier === TIER && f(r.wk))
+      : origin === null ? PW.filter(r => f(r.wk))
+      : PW.filter(r => r.origin === origin && f(r.wk));
+    return headline(perNode(rows));
+  };
+  const wowScopes = TIER ? [[T_LABEL[TIER], "tier"]]
+    : [["total", null], ...[...new Set(PW.map(r => r.origin))].map(o => [o, o])];
+  html += `<h2>Week over week \u2014 ${w1k[0]} \u2192 ${w1k[1]} vs ${w0k[0]} \u2192 ${w0k[1]}</h2>
+    <div class="lede">Last complete Mon\u2013Sun week against the one before it.</div>
+    <table class="oo"><tr><th>${TIER ? "audience" : "source"}</th><th>sessions</th>
+    <th>prior</th><th>\u0394</th><th>reach form</th><th>prior</th></tr>` +
+    wowScopes.map(([label, spec]) => {
+      const a = wkAgg(spec === "tier" ? null : spec, "1w");
+      const b = wkAgg(spec === "tier" ? null : spec, "1wp");
+      return `<tr><td>${esc(String(label))}</td><td>${a.sessions.toLocaleString("en-US")}</td>
+        <td>${b.sessions.toLocaleString("en-US")}</td><td>${delta(a.sessions, b.sessions)}</td>
+        <td>${pct(a.reach, a.sessions)}</td><td>${pct(b.reach, b.sessions)}</td></tr>`;
+    }).join("") + `</table>`;
+
+  rep.innerHTML = html;
+  document.getElementById("foot").before(rep);
+}
+
 </script>
 </body>
 </html>
