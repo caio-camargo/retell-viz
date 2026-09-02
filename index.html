@@ -42,18 +42,24 @@
   .top { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; flex-wrap: wrap; }
   h1 { font-size: 26px; letter-spacing: -0.015em; }
   .sub { color: var(--ink-2); margin: 6px 0 22px; font-size: 15px; max-width: 900px; }
+  .topright { display: flex; gap: 10px; align-items: baseline; }
+  .topright a { color: var(--accent); text-decoration: none; font-size: 13px; }
   button.present { font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 8px; cursor: pointer;
     border: 1px solid var(--card-stroke); background: var(--card); color: var(--ink-2); }
   button.present:hover { border-color: var(--accent); color: var(--accent); }
   h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); margin: 30px 0 10px; }
   h2 .wk { text-transform: none; letter-spacing: 0; font-weight: 500; color: var(--ink-2); margin-left: 10px; }
-  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
-  .tile { background: var(--card); border: 1px solid var(--card-stroke); border-radius: 12px; padding: 16px 18px 14px; display: flex; flex-direction: column; gap: 6px; }
-  .tile .k { font-size: 13px; color: var(--ink-2); font-weight: 600; }
-  .tile .v { font-size: 36px; font-weight: 750; letter-spacing: -0.02em; line-height: 1.05; }
-  .tile .v small { font-size: 15px; font-weight: 500; color: var(--ink-2); margin-left: 6px; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+  .tile { background: var(--card); border: 1px solid var(--card-stroke); border-radius: 12px; padding: 16px 18px 14px;
+    display: flex; flex-direction: column; gap: 6px; cursor: pointer; text-align: left; font: inherit; color: inherit; }
+  .tile:hover { border-color: var(--accent); }
+  .tile.open { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-faint); }
+  .tile .k { font-size: 13px; color: var(--ink-2); font-weight: 600; display: flex; justify-content: space-between; }
+  .tile .k .more { color: var(--muted); font-weight: 500; font-size: 12px; }
+  .tile .v { font-size: 34px; font-weight: 750; letter-spacing: -0.02em; line-height: 1.05; }
+  .tile .v small { font-size: 14px; font-weight: 500; color: var(--ink-2); margin-left: 6px; }
   .tile .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-  .delta { font-size: 13.5px; font-weight: 700; padding: 2px 9px; border-radius: 20px; }
+  .delta { font-size: 13.5px; font-weight: 700; padding: 2px 9px; border-radius: 20px; white-space: nowrap; }
   .delta.up { color: var(--good); background: var(--good-soft); }
   .delta.down { color: var(--bad); background: var(--bad-soft); }
   .delta.flat { color: var(--ink-2); background: var(--accent-faint); }
@@ -61,6 +67,24 @@
   .spark { margin-top: 4px; }
   .spark svg { display: block; width: 100%; height: 34px; }
   .note { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  /* expanded detail panel under the tiles */
+  #detail { display: none; margin-top: 12px; background: var(--surface); border: 1px solid var(--accent);
+    border-radius: 12px; padding: 16px 18px; }
+  #detail.show { display: block; }
+  #detail h3 { font-size: 16px; margin-bottom: 2px; }
+  #detail .def { color: var(--ink-2); font-size: 13.5px; margin-bottom: 12px; }
+  #detail .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; }
+  #detail h4 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 6px; }
+  #detail table { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
+  #detail th { text-align: left; color: var(--muted); font-weight: 600; font-size: 11.5px; padding: 3px 8px 5px 0; border-bottom: 1px solid var(--card-stroke); }
+  #detail td { padding: 4px 8px 4px 0; border-bottom: 1px solid var(--border); }
+  #detail td.n, #detail th.n { text-align: right; }
+  #detail tr.hi td { font-weight: 700; }
+  #detail ul { margin: 0 0 0 18px; font-size: 13.5px; color: var(--ink-2); }
+  #detail li { margin-bottom: 4px; }
+  #detail .links { display: flex; gap: 14px; margin-top: 12px; font-size: 13.5px; }
+  #detail .links a { color: var(--accent); text-decoration: none; }
+  #detail .close { float: right; font-size: 12px; color: var(--muted); background: none; border: 0; cursor: pointer; }
   .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
   a.card { display: block; background: var(--surface); border: 1px solid var(--border);
     border-radius: 12px; padding: 14px 16px; text-decoration: none; color: inherit; }
@@ -73,32 +97,37 @@
   .lead { border-color: var(--accent); background: var(--accent-faint); }
   footer { color: var(--muted); font-size: 13px; margin-top: 36px; max-width: 900px; line-height: 1.55; }
   footer b { color: var(--ink-2); }
+  footer a { color: var(--accent); text-decoration: none; }
   /* presentation mode: only the glance layer, bigger */
   body.present { font-size: 18px; }
   body.present h1 { font-size: 34px; }
-  body.present .tiles { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px; }
-  @media (min-width: 1100px) { body.present .tiles { grid-template-columns: repeat(5, 1fr); } }
-  body.present .tile .v { font-size: 52px; }
+  body.present .tiles { grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  body.present .tile .v { font-size: 50px; }
   body.present .tile .k { font-size: 15px; }
+  body.present .tile .k .more { display: none; }
   body.present .delta { font-size: 16px; }
   body.present .spark svg { height: 48px; }
-  body.present .links, body.present footer, body.present .sub { display: none; }
+  body.present .sections, body.present footer, body.present .sub, body.present #freshness { display: none; }
 </style>
 </head>
 <body>
 <main>
   <div class="top">
     <h1>Retell inbound — the weekly view</h1>
-    <button class="present" id="presentBtn" title="Only the headline tiles, larger — for screenshare">Presentation mode</button>
+    <div class="topright">
+      <a href="https://github.com/caio-camargo/retell-viz/blob/main/ROADMAP.md">roadmap &amp; notes</a>
+      <button class="present" id="presentBtn" title="Only the headline tiles, larger — for screenshare">Presentation mode</button>
+    </div>
   </div>
   <div class="sub">What the marketing site did last week and where enterprise leads came from, refreshed nightly from the warehouse.
-    Headlines compare the <b>last complete Mon–Sun week</b> with the week before. Everything here is aggregate — counts and rates, no identities.</div>
+    Headlines compare the <b>last complete Mon–Sun week</b> with the week before. Click a tile for the data and notes behind it. Everything here is aggregate — counts and rates, no identities.</div>
 
   <h2>Last week at a glance <span class="wk" id="wkLabel"></span></h2>
   <div class="tiles" id="tiles"></div>
+  <div id="detail"></div>
   <div class="note" id="freshness"></div>
 
-  <div class="links">
+  <div class="sections">
   <h2>Week over week — by source</h2>
   <div class="cards">
     <a class="card lead" href="journey/sankey-lakehouse.html#wow">
@@ -167,50 +196,57 @@
   </div>
 
   <footer>
-    <b>Reading the headlines.</b> Sessions and form-reach come from the analytics warehouse; leads, ICP and bookings from the scheduler and CRM. Form-reach means the session touched the demo-request page — submission and booking are only observable on the lead metrics.
-    <b>Known undercount:</b> a consent-banner change on Aug 12 drops the session id on a growing share of pageviews (~20% by the week of Aug 17), so recent session counts read low — treat session week-over-week as directional and lean on the lead metrics. Pages marked <span class="dot live" style="vertical-align:middle"></span> refresh nightly; snapshots state their own window.
+    <b>Reading the headlines.</b> Sessions and form-reach come from the analytics warehouse; leads, ICP and bookings from the scheduler and CRM; signups from billing. Form-reach means the session touched the demo-request page — submission and booking are only observable on the lead metrics.
+    <b>Known undercount:</b> a consent-banner change on Aug 12 drops the session id on a growing share of pageviews (~20% by the week of Aug 17), so recent session counts read low — treat session week-over-week as directional and lean on the lead metrics. Pages marked <span class="dot live" style="vertical-align:middle"></span> refresh nightly; snapshots state their own window. Design rules, queued work and caveats: <a href="https://github.com/caio-camargo/retell-viz/blob/main/ROADMAP.md">roadmap &amp; notes</a>.
   </footer>
 </main>
 
 <script type="module">
-const SNAP = /*SNAP*/{"cube":[{"wk":"2026-07-13","form":813,"sessions":5797},{"wk":"2026-07-20","form":1803,"sessions":65943},{"wk":"2026-07-27","form":990,"sessions":76649},{"wk":"2026-08-03","form":901,"sessions":64795},{"wk":"2026-08-10","form":923,"sessions":68578},{"wk":"2026-08-17","form":704,"sessions":50651},{"wk":"2026-08-24","form":750,"sessions":56750},{"wk":"2026-08-31","form":163,"sessions":11433}],"icp":[{"wk":"2026-05-04","icp":89,"booked":190,"routed":277,"icp_booked":67},{"wk":"2026-05-11","icp":119,"booked":211,"routed":310,"icp_booked":96},{"wk":"2026-05-18","icp":93,"booked":193,"routed":259,"icp_booked":73},{"wk":"2026-05-25","icp":93,"booked":218,"routed":276,"icp_booked":75},{"wk":"2026-06-01","icp":112,"booked":254,"routed":338,"icp_booked":94},{"wk":"2026-06-08","icp":120,"booked":223,"routed":350,"icp_booked":89},{"wk":"2026-06-15","icp":118,"booked":225,"routed":341,"icp_booked":81},{"wk":"2026-06-22","icp":84,"booked":199,"routed":268,"icp_booked":71},{"wk":"2026-06-29","icp":86,"booked":201,"routed":270,"icp_booked":75},{"wk":"2026-07-06","icp":73,"booked":190,"routed":256,"icp_booked":56},{"wk":"2026-07-13","icp":93,"booked":233,"routed":304,"icp_booked":79},{"wk":"2026-07-20","icp":79,"booked":191,"routed":257,"icp_booked":65},{"wk":"2026-07-27","icp":94,"booked":192,"routed":293,"icp_booked":68},{"wk":"2026-08-03","icp":105,"booked":198,"routed":278,"icp_booked":84},{"wk":"2026-08-10","icp":90,"booked":185,"routed":267,"icp_booked":63},{"wk":"2026-08-17","icp":77,"booked":161,"routed":244,"icp_booked":53},{"wk":"2026-08-24","icp":86,"booked":167,"routed":229,"icp_booked":67},{"wk":"2026-08-31","icp":17,"booked":33,"routed":51,"icp_booked":15}],"windows":{"1w":["2026-08-24","2026-08-30"],"4w":["2026-08-03","2026-08-30"],"1wp":["2026-08-17","2026-08-23"]},"ga4_last_day":"2026-08-31","built":{"icp-journeys":"2026-09-01T21:30:00.060823+00:00","journey-cube":"2026-09-01T23:44:32.923+00:00","journey-lakehouse":"2026-09-01T21:00:30.986+00:00"}}/*SNAP-END*/;
+const SNAP = /*SNAP*/{"icp":[{"wk":"2026-05-04","icp":89,"booked":190,"routed":277,"icp_booked":67},{"wk":"2026-05-11","icp":119,"booked":211,"routed":310,"icp_booked":96},{"wk":"2026-05-18","icp":93,"booked":193,"routed":259,"icp_booked":73},{"wk":"2026-05-25","icp":93,"booked":218,"routed":276,"icp_booked":75},{"wk":"2026-06-01","icp":112,"booked":254,"routed":338,"icp_booked":94},{"wk":"2026-06-08","icp":120,"booked":223,"routed":350,"icp_booked":89},{"wk":"2026-06-15","icp":118,"booked":225,"routed":341,"icp_booked":81},{"wk":"2026-06-22","icp":84,"booked":199,"routed":268,"icp_booked":71},{"wk":"2026-06-29","icp":86,"booked":201,"routed":270,"icp_booked":75},{"wk":"2026-07-06","icp":73,"booked":190,"routed":256,"icp_booked":56},{"wk":"2026-07-13","icp":93,"booked":233,"routed":304,"icp_booked":79},{"wk":"2026-07-20","icp":79,"booked":191,"routed":257,"icp_booked":65},{"wk":"2026-07-27","icp":94,"booked":192,"routed":293,"icp_booked":68},{"wk":"2026-08-03","icp":105,"booked":198,"routed":278,"icp_booked":84},{"wk":"2026-08-10","icp":90,"booked":185,"routed":267,"icp_booked":63},{"wk":"2026-08-17","icp":77,"booked":161,"routed":244,"icp_booked":53},{"wk":"2026-08-24","icp":86,"booked":167,"routed":229,"icp_booked":67},{"wk":"2026-08-31","icp":17,"booked":33,"routed":51,"icp_booked":15}],"cube":[{"wk":"2026-07-13","form":813,"sessions":5797},{"wk":"2026-07-20","form":1803,"sessions":65943},{"wk":"2026-07-27","form":990,"sessions":76649},{"wk":"2026-08-03","form":901,"sessions":64795},{"wk":"2026-08-10","form":923,"sessions":68578},{"wk":"2026-08-17","form":704,"sessions":50651},{"wk":"2026-08-24","form":750,"sessions":56750},{"wk":"2026-08-31","form":163,"sessions":11433}],"built":{"signups":"2026-09-02T15:47:28.887621+00:00","icp-journeys":"2026-09-01T21:30:00.060823+00:00","journey-cube":"2026-09-01T23:44:32.923+00:00","journey-lakehouse":"2026-09-01T21:00:30.986+00:00"},"signups":[{"wk":"2026-07-13","signups":3209,"business":955,"freemail":2254},{"wk":"2026-07-20","signups":4321,"business":1275,"freemail":3046},{"wk":"2026-07-27","signups":4278,"business":1299,"freemail":2979},{"wk":"2026-08-03","signups":4247,"business":1259,"freemail":2988},{"wk":"2026-08-10","signups":4757,"business":1266,"freemail":3491},{"wk":"2026-08-17","signups":4524,"business":1268,"freemail":3256},{"wk":"2026-08-24","signups":4419,"business":1294,"freemail":3125},{"wk":"2026-08-31","signups":1450,"business":452,"freemail":998}],"windows":{"1w":["2026-08-24","2026-08-30"],"4w":["2026-08-03","2026-08-30"],"1wp":["2026-08-17","2026-08-23"]},"cubeOrigin":[{"wk":"2026-07-13","form":4,"origin":"chatgpt","sessions":97},{"wk":"2026-07-13","form":752,"origin":"direct / untagged","sessions":3260},{"wk":"2026-07-13","form":4,"origin":"google ads","sessions":320},{"wk":"2026-07-13","form":46,"origin":"google organic","sessions":1857},{"wk":"2026-07-13","form":1,"origin":"linkedin","sessions":22},{"wk":"2026-07-13","form":6,"origin":"other referral","sessions":241},{"wk":"2026-07-20","form":76,"origin":"chatgpt","sessions":1060},{"wk":"2026-07-20","form":967,"origin":"direct / untagged","sessions":29922},{"wk":"2026-07-20","form":29,"origin":"google ads","sessions":2493},{"wk":"2026-07-20","form":552,"origin":"google organic","sessions":28655},{"wk":"2026-07-20","form":4,"origin":"linkedin","sessions":468},{"wk":"2026-07-20","form":175,"origin":"other referral","sessions":3345},{"wk":"2026-07-27","form":65,"origin":"chatgpt","sessions":1144},{"wk":"2026-07-27","form":262,"origin":"direct / untagged","sessions":41658},{"wk":"2026-07-27","form":43,"origin":"google ads","sessions":2251},{"wk":"2026-07-27","form":492,"origin":"google organic","sessions":27827},{"wk":"2026-07-27","form":8,"origin":"linkedin","sessions":568},{"wk":"2026-07-27","form":120,"origin":"other referral","sessions":3201},{"wk":"2026-08-03","form":56,"origin":"chatgpt","sessions":1220},{"wk":"2026-08-03","form":208,"origin":"direct / untagged","sessions":29840},{"wk":"2026-08-03","form":61,"origin":"google ads","sessions":3283},{"wk":"2026-08-03","form":456,"origin":"google organic","sessions":26353},{"wk":"2026-08-03","form":4,"origin":"linkedin","sessions":394},{"wk":"2026-08-03","form":116,"origin":"other referral","sessions":3705},{"wk":"2026-08-10","form":41,"origin":"chatgpt","sessions":1487},{"wk":"2026-08-10","form":518,"origin":"direct / untagged","sessions":35685},{"wk":"2026-08-10","form":23,"origin":"google ads","sessions":2509},{"wk":"2026-08-10","form":290,"origin":"google organic","sessions":24968},{"wk":"2026-08-10","form":1,"origin":"linkedin","sessions":285},{"wk":"2026-08-10","form":50,"origin":"other referral","sessions":3644},{"wk":"2026-08-17","form":37,"origin":"chatgpt","sessions":1443},{"wk":"2026-08-17","form":392,"origin":"direct / untagged","sessions":24479},{"wk":"2026-08-17","form":11,"origin":"google ads","sessions":1943},{"wk":"2026-08-17","form":226,"origin":"google organic","sessions":20077},{"wk":"2026-08-17","form":1,"origin":"linkedin","sessions":315},{"wk":"2026-08-17","form":37,"origin":"other referral","sessions":2394},{"wk":"2026-08-24","form":83,"origin":"chatgpt","sessions":2039},{"wk":"2026-08-24","form":257,"origin":"direct / untagged","sessions":27634},{"wk":"2026-08-24","form":33,"origin":"google ads","sessions":2316},{"wk":"2026-08-24","form":270,"origin":"google organic","sessions":21718},{"wk":"2026-08-24","form":4,"origin":"linkedin","sessions":288},{"wk":"2026-08-24","form":103,"origin":"other referral","sessions":2755},{"wk":"2026-08-31","form":16,"origin":"chatgpt","sessions":373},{"wk":"2026-08-31","form":51,"origin":"direct / untagged","sessions":5352},{"wk":"2026-08-31","form":10,"origin":"google ads","sessions":533},{"wk":"2026-08-31","form":62,"origin":"google organic","sessions":4563},{"wk":"2026-08-31","form":null,"origin":"linkedin","sessions":50},{"wk":"2026-08-31","form":24,"origin":"other referral","sessions":562}],"signupsMeta":{"to":"2026-09-01","from":"2026-07-15","total":31205,"last_complete_week":"2026-08-24"},"ga4_last_day":"2026-08-31"}/*SNAP-END*/;
 const SB = "https://xtafcezyayqcscdaaspo.supabase.co/rest/v1/viz_payloads";
 const KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh0YWZjZXp5YXlxY3NjZGFhc3BvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU0OTYwNTYsImV4cCI6MjEwMTA3MjA1Nn0.6reVt0Y2DE4bQWeUVt2K7KLfkm0hvMiY1AhdKXrFcsA";
 const GATE = "/enterprise-plan";
 
-// Reduce the two live payloads to the same shape as the embedded snapshot.
-// (The snapshot is produced by an equivalent SQL reduction at build time.)
+// Reduce the live cube payload to the snapshot shape: per week (and per week × origin),
+// sessions = entries summed over nodes, form = visits to the gate node.
 function reduceCube(p) {
-  const by = {};
+  const by = {}, byo = {};
   for (const r of p.pageWeekly) {
     const w = by[r.wk] || (by[r.wk] = { wk: r.wk, sessions: 0, form: 0 });
-    w.sessions += r.ent;
-    if (r.node === GATE) w.form += r.vis;
+    const k = r.wk + "|" + r.origin;
+    const o = byo[k] || (byo[k] = { wk: r.wk, origin: r.origin, sessions: 0, form: 0 });
+    w.sessions += r.ent; o.sessions += r.ent;
+    if (r.node === GATE) { w.form += r.vis; o.form += r.vis; }
   }
-  return Object.values(by).sort((a, b) => a.wk < b.wk ? -1 : 1);
+  const s = (a, b) => a.wk < b.wk ? -1 : a.wk > b.wk ? 1 : 0;
+  return { cube: Object.values(by).sort(s), cubeOrigin: Object.values(byo).sort(s) };
 }
 let D = SNAP, live = false;
 try {
-  const r = await fetch(SB + "?key=in.(journey-cube,icp-journeys)&select=key,payload,built_at",
+  const r = await fetch(SB + "?key=in.(journey-cube,icp-journeys,signups)&select=key,payload,built_at",
     { headers: { apikey: KEY } });
   const rows = await r.json();
-  const cube = rows.find(x => x.key === "journey-cube"), icp = rows.find(x => x.key === "icp-journeys");
+  const g = k => rows.find(x => x.key === k);
+  const cube = g("journey-cube"), icp = g("icp-journeys"), su = g("signups");
   if (r.ok && cube && icp && cube.payload.pageWeekly && icp.payload.weekly) {
-    D = { cube: reduceCube(cube.payload), icp: icp.payload.weekly,
+    D = { ...reduceCube(cube.payload), icp: icp.payload.weekly,
+          signups: su ? su.payload.weekly : (SNAP && SNAP.signups) || [],
+          signupsMeta: su ? su.payload.meta : (SNAP && SNAP.signupsMeta) || {},
           windows: cube.payload.meta.windows, ga4_last_day: cube.payload.meta.ga4_last_day,
-          built: { "journey-cube": cube.built_at, "icp-journeys": icp.built_at } };
+          built: Object.fromEntries(rows.map(x => [x.key, x.built_at])) };
     live = true;
   }
 } catch (_e) { /* embedded snapshot stands */ }
 
-const fmt = n => Number(n).toLocaleString("en-US");
+const fmt = n => n == null ? "—" : Number(n).toLocaleString("en-US");
 const pct = (a, b) => b ? (100 * a / b).toFixed(1) + "%" : "—";
 const w1 = D.windows["1w"][0], w0 = D.windows["1wp"][0];
 const cubeBy = Object.fromEntries(D.cube.map(r => [r.wk, r]));
 const icpBy = Object.fromEntries(D.icp.map(r => [r.wk, r]));
+const suBy = Object.fromEntries((D.signups || []).map(r => [r.wk, r]));
 
-function delta(a, b) {
-  if (!b) return `<span class="delta flat">n/a</span>`;
+function delta(a, b, opts = {}) {
+  if (a == null || !b) return `<span class="delta flat">n/a</span>`;
   const d = (a - b) / b;
   const cls = Math.abs(d) < 0.005 ? "flat" : d > 0 ? "up" : "down";
   const arrow = cls === "up" ? "▲" : cls === "down" ? "▼" : "•";
@@ -228,44 +264,147 @@ function spark(vals) {
     <path d="${d}" fill="none" stroke="var(--spark)" stroke-width="2" vector-effect="non-scaling-stroke"/>
     <circle cx="${x(li).toFixed(1)}" cy="${y(v[li]).toFixed(1)}" r="3.5" fill="var(--spark)" vector-effect="non-scaling-stroke"/></svg>`;
 }
-// last 8 complete weeks ending at w1
 const weeks = D.cube.map(r => r.wk).filter(w => w <= w1).slice(-8);
 const series = (src, f) => weeks.map(w => (src[w] ? f(src[w]) : null));
+const fmtD = s => new Date(s + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
 
 const c1 = cubeBy[w1] || {}, c0 = cubeBy[w0] || {};
 const i1 = icpBy[w1] || {}, i0 = icpBy[w0] || {};
+const s1 = suBy[w1] || {}, s0 = suBy[w0] || {};
+
+// ---- detail builders: weekly table + breakdown + notes, per metric
+function weeklyTable(cols, src) {
+  const wk = D.cube.map(r => r.wk).filter(w => w <= w1).slice(-8);
+  let prev = null;
+  const rows = wk.map(w => {
+    const r = src[w];
+    const cells = cols.map(c => `<td class="n">${r ? c.f(r) : "—"}</td>`).join("");
+    const main = r ? cols[0].raw(r) : null;
+    const d = prev != null && main != null ? delta(main, prev) : "";
+    prev = main;
+    return `<tr class="${w === w1 ? "hi" : ""}"><td>${fmtD(w)}</td>${cells}<td class="n">${d}</td></tr>`;
+  }).join("");
+  return `<table><tr><th>week of</th>${cols.map(c => `<th class="n">${c.h}</th>`).join("")}<th class="n">Δ</th></tr>${rows}</table>`;
+}
+function originTable(field) {
+  const o1 = D.cubeOrigin.filter(r => r.wk === w1), o0 = Object.fromEntries(D.cubeOrigin.filter(r => r.wk === w0).map(r => [r.origin, r]));
+  const rows = o1.sort((a, b) => b[field] - a[field]).map(r => {
+    const p = o0[r.origin] || {};
+    const rate = field === "form" ? `<td class="n">${pct(r.form, r.sessions)}</td><td class="n">${pct(p.form, p.sessions)}</td>` : "";
+    return `<tr><td>${r.origin}</td><td class="n">${fmt(r[field])}</td><td class="n">${fmt(p[field])}</td><td class="n">${delta(r[field], p[field])}</td>${rate}</tr>`;
+  }).join("");
+  const rateH = field === "form" ? `<th class="n">rate</th><th class="n">prior</th>` : "";
+  return `<table><tr><th>source</th><th class="n">last week</th><th class="n">prior</th><th class="n">Δ</th>${rateH}</tr>${rows}</table>`;
+}
+const DETAILS = {
+  sessions: {
+    title: "Sessions", def: "Marketing-site sessions from the analytics warehouse (www only — the product dashboard and docs share the tracker and are excluded). One session = one visit, split on 30 minutes of inactivity.",
+    left: () => weeklyTable([{ h: "sessions", f: r => fmt(r.sessions), raw: r => r.sessions }, { h: "reached form", f: r => fmt(r.form), raw: r => r.form }, { h: "rate", f: r => pct(r.form, r.sessions), raw: r => r.form }], cubeBy),
+    right: () => `<h4>By source — last week vs prior</h4>` + originTable("sessions"),
+    notes: ["A consent-banner change on Aug 12 drops the session id on a growing share of pageviews (~20% by the week of Aug 17). Weeks after that read low, so week-over-week here is directional; the lead metrics are unaffected.",
+      "Direct / untagged is the largest source and mostly attribution loss, not a channel — most LinkedIn, YouTube and email traffic arrives untagged.",
+      "ChatGPT is small in sessions and large in leads: it is the highest form-reach source and 32% of leads name it as how they heard of us."],
+    links: [["journey/sankey-lakehouse.html#wow", "Week over week by source, with leak pages"], ["journey/sankey-lakehouse.html", "All traffic, step by step"]]
+  },
+  form: {
+    title: "Reached the demo form", def: "Sessions that touched the enterprise demo-request page at any step. Reaching the page is observable for every session; submitting and booking are not at this grain — those live in the lead metrics.",
+    left: () => weeklyTable([{ h: "reached form", f: r => fmt(r.form), raw: r => r.form }, { h: "of sessions", f: r => pct(r.form, r.sessions), raw: r => r.form }], cubeBy),
+    right: () => `<h4>By source — last week vs prior</h4>` + originTable("form"),
+    notes: ["The rate runs ~1.3–1.5% of sessions. Sources differ far more than the site-wide number suggests: ChatGPT and referrals reach the form at 3–4%, paid and organic at 1–1.5%.",
+      "Industry and feature pages walk visitors to the form at 2–3× the site rate; the blog near zero — most blog traffic is consumer-intent."],
+    links: [["journey/index-lakehouse.html", "Which pages pull toward the form"], ["funnel-at-a-glance.html", "The five-panel funnel briefing"]]
+  },
+  routed: {
+    title: "Leads routed", def: "Demo-request submissions the scheduler routed, all tiers (enterprise team, mid-market, partner, disqualified). Counted by submission time.",
+    left: () => weeklyTable([{ h: "routed", f: r => fmt(r.routed), raw: r => r.routed }, { h: "booked", f: r => fmt(r.booked), raw: r => r.booked }, { h: "ICP", f: r => fmt(r.icp), raw: r => r.icp }], icpBy),
+    right: () => `<h4>What a routed lead becomes</h4><table><tr><th></th><th class="n">last week</th><th class="n">prior</th></tr>
+      <tr><td>routed</td><td class="n">${fmt(i1.routed)}</td><td class="n">${fmt(i0.routed)}</td></tr>
+      <tr><td>booked a meeting (any tier)</td><td class="n">${fmt(i1.booked)} · ${pct(i1.booked, i1.routed)}</td><td class="n">${fmt(i0.booked)} · ${pct(i0.booked, i0.routed)}</td></tr>
+      <tr><td>ICP</td><td class="n">${fmt(i1.icp)} · ${pct(i1.icp, i1.routed)}</td><td class="n">${fmt(i0.icp)} · ${pct(i0.icp, i0.routed)}</td></tr>
+      <tr><td>ICP booked</td><td class="n">${fmt(i1.icp_booked)}</td><td class="n">${fmt(i0.icp_booked)}</td></tr></table>`,
+    notes: ["Booked here means a meeting was scheduled; attendance is not reliably recorded, so held meetings are not shown.",
+      "Roughly 13% of qualified leads see the calendar and never book; most of those never get a CRM deal — an invisible leak the weekly ICP page tracks."],
+    links: [["icp-journeys.html", "Enterprise leads week by week"]]
+  },
+  icp: {
+    title: "ICP leads", def: "Routed leads that match the ideal customer profile: the enterprise-team routing rule where a meeting was booked, otherwise the CRM classifier (company match or enterprise tier).",
+    left: () => weeklyTable([{ h: "ICP", f: r => fmt(r.icp), raw: r => r.icp }, { h: "of routed", f: r => pct(r.icp, r.routed), raw: r => r.icp }, { h: "ICP booked", f: r => fmt(r.icp_booked), raw: r => r.icp_booked }], icpBy),
+    right: () => `<h4>Where ICP leads say they heard of us</h4><p class="def" style="margin:0">Self-reported on the form: Google search and ChatGPT lead, then recommendations and YouTube — the full breakdown, landing pages and journey shape are on the enterprise-leads page.</p>`,
+    notes: ["ICP share of routed leads runs 30–40% week to week.",
+      "Journeys are observable from Jul 19, 2026 and about one in five in-coverage ICP leads shows none — corporate machines block tracking — so journey stats skew toward smaller, less locked-down visitors."],
+    links: [["icp-journeys.html", "Enterprise leads week by week"], ["journey/sankey.html", "ICP-lead funnel with booking outcomes (Jun–Jul cohort)"]]
+  },
+  icp_booked: {
+    title: "ICP meetings booked", def: "ICP leads whose submission ended in a scheduled meeting.",
+    left: () => weeklyTable([{ h: "ICP booked", f: r => fmt(r.icp_booked), raw: r => r.icp_booked }, { h: "of ICP", f: r => pct(r.icp_booked, r.icp), raw: r => r.icp_booked }], icpBy),
+    right: () => `<h4>Read with</h4><p class="def" style="margin:0">Booking rate among ICP leads is typically 70–80%. A dip in bookings with flat ICP volume points at the calendar step; a dip in both points upstream.</p>`,
+    notes: ["Attendance and no-shows are not reliably recorded at the scheduler; the funnel stops at booked / canceled.",
+      "Each booked enterprise lead's website journey, form answers and session recording are studied individually in a private view — not on this site."],
+    links: [["icp-journeys.html", "Enterprise leads week by week"]]
+  },
+  signups: {
+    title: "Self-serve signups", def: "New billing customers per week (self-serve product signups), split by email domain into business vs free-mail (gmail, outlook and the like).",
+    left: () => weeklyTable([{ h: "signups", f: r => fmt(r.signups), raw: r => r.signups }, { h: "business", f: r => fmt(r.business), raw: r => r.business }, { h: "business %", f: r => pct(r.business, r.signups), raw: r => r.business }], suBy),
+    right: () => `<h4>Business vs free-mail — last week vs prior</h4><table><tr><th></th><th class="n">last week</th><th class="n">prior</th><th class="n">Δ</th></tr>
+      <tr><td>business domains</td><td class="n">${fmt(s1.business)}</td><td class="n">${fmt(s0.business)}</td><td class="n">${delta(s1.business, s0.business)}</td></tr>
+      <tr><td>free-mail</td><td class="n">${fmt(s1.freemail)}</td><td class="n">${fmt(s0.freemail)}</td><td class="n">${delta(s1.freemail, s0.freemail)}</td></tr></table>`,
+    notes: ["Signups are a different motion from the demo form: volume is high and mostly free-mail; the business-domain share is the number to watch.",
+      "History starts " + (D.signupsMeta && D.signupsMeta.from ? fmtD(D.signupsMeta.from) : "mid-July 2026") + ". A weekly AI-written commentary on this feed already exists elsewhere; bringing it onto this page is on the roadmap."],
+    links: [["https://github.com/caio-camargo/retell-viz/blob/main/ROADMAP.md", "Roadmap: usage minutes and cohort views next"]]
+  },
+};
+
 const tiles = [
-  { k: "Sessions", v: fmt(c1.sessions), d: delta(c1.sessions, c0.sessions), p: fmt(c0.sessions),
+  { id: "sessions", k: "Sessions", v: fmt(c1.sessions), d: delta(c1.sessions, c0.sessions), p: fmt(c0.sessions),
     s: series(cubeBy, r => r.sessions), n: "⚠ undercounted since Aug 12 — directional" },
-  { k: "Reached the demo form", v: fmt(c1.form) + `<small>${pct(c1.form, c1.sessions)} of sessions</small>`,
+  { id: "form", k: "Reached the demo form", v: fmt(c1.form) + `<small>${pct(c1.form, c1.sessions)}</small>`,
     d: delta(c1.form, c0.form), p: fmt(c0.form) + " · " + pct(c0.form, c0.sessions), s: series(cubeBy, r => r.form) },
-  { k: "Leads routed", v: fmt(i1.routed), d: delta(i1.routed, i0.routed), p: fmt(i0.routed),
+  { id: "routed", k: "Leads routed", v: fmt(i1.routed), d: delta(i1.routed, i0.routed), p: fmt(i0.routed),
     s: series(icpBy, r => r.routed) },
-  { k: "ICP leads", v: fmt(i1.icp) + `<small>${pct(i1.icp, i1.routed)} of routed</small>`,
+  { id: "icp", k: "ICP leads", v: fmt(i1.icp) + `<small>${pct(i1.icp, i1.routed)} of routed</small>`,
     d: delta(i1.icp, i0.icp), p: fmt(i0.icp), s: series(icpBy, r => r.icp) },
-  { k: "ICP meetings booked", v: fmt(i1.icp_booked) + `<small>${pct(i1.icp_booked, i1.icp)} of ICP</small>`,
+  { id: "icp_booked", k: "ICP meetings booked", v: fmt(i1.icp_booked) + `<small>${pct(i1.icp_booked, i1.icp)} of ICP</small>`,
     d: delta(i1.icp_booked, i0.icp_booked), p: fmt(i0.icp_booked), s: series(icpBy, r => r.icp_booked) },
+  { id: "signups", k: "Self-serve signups", v: fmt(s1.signups) + `<small>${pct(s1.business, s1.signups)} business</small>`,
+    d: delta(s1.signups, s0.signups), p: fmt(s0.signups), s: series(suBy, r => r.signups) },
 ];
 document.getElementById("tiles").innerHTML = tiles.map(t => `
-  <div class="tile">
-    <div class="k">${t.k}</div>
+  <button class="tile" data-id="${t.id}" aria-expanded="false">
+    <div class="k"><span>${t.k}</span><span class="more">details ▾</span></div>
     <div class="v">${t.v}</div>
     <div class="row">${t.d}<span class="prior">prior week ${t.p}</span></div>
     <div class="spark">${spark(t.s)}</div>
     ${t.n ? `<div class="note">${t.n}</div>` : ""}
-  </div>`).join("");
-const fmtD = s => new Date(s + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  </button>`).join("");
+
+const detail = document.getElementById("detail");
+let openId = null;
+function openDetail(id) {
+  document.querySelectorAll(".tile").forEach(b => { b.classList.toggle("open", b.dataset.id === id); b.setAttribute("aria-expanded", b.dataset.id === id); });
+  if (!id) { detail.classList.remove("show"); detail.innerHTML = ""; openId = null; return; }
+  const d = DETAILS[id];
+  detail.innerHTML = `<button class="close" id="closeDetail">close ✕</button><h3>${d.title}</h3><div class="def">${d.def}</div>
+    <div class="grid"><div><h4>Weekly — last ${weeks.length} complete weeks</h4>${d.left()}</div><div>${d.right()}</div>
+    <div><h4>Notes</h4><ul>${d.notes.map(n => `<li>${n}</li>`).join("")}</ul></div></div>
+    <div class="links">${d.links.map(([h, t]) => `<a href="${h}">${t} →</a>`).join("")}</div>`;
+  detail.classList.add("show"); openId = id;
+  document.getElementById("closeDetail").addEventListener("click", () => openDetail(null));
+}
+document.getElementById("tiles").addEventListener("click", e => {
+  const b = e.target.closest(".tile"); if (!b) return;
+  openDetail(openId === b.dataset.id ? null : b.dataset.id);
+});
+
 document.getElementById("wkLabel").textContent =
   `${fmtD(D.windows["1w"][0])} – ${fmtD(D.windows["1w"][1])} vs ${fmtD(D.windows["1wp"][0])} – ${fmtD(D.windows["1wp"][1])} · sparklines: last ${weeks.length} weeks`;
 const b = D.built || {};
+const stamp = k => b[k] ? String(b[k]).slice(0, 16).replace("T", " ") + " UTC" : "—";
 document.getElementById("freshness").textContent =
   (live ? "Live data" : "Embedded snapshot") + " · warehouse through " + D.ga4_last_day
-  + (b["journey-cube"] ? " · site metrics built " + String(b["journey-cube"]).slice(0, 16).replace("T", " ") + " UTC" : "")
-  + (b["icp-journeys"] ? " · lead metrics built " + String(b["icp-journeys"]).slice(0, 16).replace("T", " ") + " UTC" : "");
+  + " · site metrics built " + stamp("journey-cube") + " · lead metrics " + stamp("icp-journeys") + " · signups " + stamp("signups");
 
-// presentation mode toggle (URL ?present also works, for a bookmarkable screenshare tab)
 const btn = document.getElementById("presentBtn");
-const setP = on => { document.body.classList.toggle("present", on); btn.textContent = on ? "Exit presentation" : "Presentation mode"; };
+const setP = on => { document.body.classList.toggle("present", on); btn.textContent = on ? "Exit presentation" : "Presentation mode"; if (on) openDetail(null); };
 btn.addEventListener("click", () => setP(!document.body.classList.contains("present")));
 if (new URLSearchParams(location.search).has("present")) setP(true);
 </script>
