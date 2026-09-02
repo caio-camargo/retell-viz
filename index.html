@@ -102,7 +102,7 @@
   body.present { font-size: 18px; }
   body.present h1 { font-size: 34px; }
   body.present .tiles { grid-template-columns: repeat(3, 1fr); gap: 16px; }
-  body.present .tile .v { font-size: 50px; }
+  body.present .tile .v { font-size: 42px; }
   body.present .tile .k { font-size: 15px; }
   body.present .tile .k .more { display: none; }
   body.present .delta { font-size: 16px; }
@@ -196,13 +196,13 @@
   </div>
 
   <footer>
-    <b>Reading the headlines.</b> Sessions and form-reach come from the analytics warehouse; leads, ICP and bookings from the scheduler and CRM; signups from billing. Form-reach means the session touched the demo-request page — submission and booking are only observable on the lead metrics.
+    <b>Reading the headlines.</b> Sessions and form-reach come from the analytics warehouse; leads, ICP and bookings from the scheduler and CRM; signups and paying accounts from billing. Form-reach means the session touched the demo-request page — submission and booking are only observable on the lead metrics.
     <b>Known undercount:</b> a consent-banner change on Aug 12 drops the session id on a growing share of pageviews (~20% by the week of Aug 17), so recent session counts read low — treat session week-over-week as directional and lean on the lead metrics. Pages marked <span class="dot live" style="vertical-align:middle"></span> refresh nightly; snapshots state their own window. Design rules, queued work and caveats: <a href="https://github.com/caio-camargo/retell-viz/blob/main/ROADMAP.md">roadmap &amp; notes</a>.
   </footer>
 </main>
 
 <script type="module">
-const SNAP = /*SNAP*/{"icp":[{"wk":"2026-05-04","icp":89,"booked":190,"routed":277,"icp_booked":67},{"wk":"2026-05-11","icp":119,"booked":211,"routed":310,"icp_booked":96},{"wk":"2026-05-18","icp":93,"booked":193,"routed":259,"icp_booked":73},{"wk":"2026-05-25","icp":93,"booked":218,"routed":276,"icp_booked":75},{"wk":"2026-06-01","icp":112,"booked":254,"routed":338,"icp_booked":94},{"wk":"2026-06-08","icp":120,"booked":223,"routed":350,"icp_booked":89},{"wk":"2026-06-15","icp":118,"booked":225,"routed":341,"icp_booked":81},{"wk":"2026-06-22","icp":84,"booked":199,"routed":268,"icp_booked":71},{"wk":"2026-06-29","icp":86,"booked":201,"routed":270,"icp_booked":75},{"wk":"2026-07-06","icp":73,"booked":190,"routed":256,"icp_booked":56},{"wk":"2026-07-13","icp":93,"booked":233,"routed":304,"icp_booked":79},{"wk":"2026-07-20","icp":79,"booked":191,"routed":257,"icp_booked":65},{"wk":"2026-07-27","icp":94,"booked":192,"routed":293,"icp_booked":68},{"wk":"2026-08-03","icp":105,"booked":198,"routed":278,"icp_booked":84},{"wk":"2026-08-10","icp":90,"booked":185,"routed":267,"icp_booked":63},{"wk":"2026-08-17","icp":77,"booked":161,"routed":244,"icp_booked":53},{"wk":"2026-08-24","icp":86,"booked":167,"routed":229,"icp_booked":67},{"wk":"2026-08-31","icp":17,"booked":33,"routed":51,"icp_booked":15}],"cube":[{"wk":"2026-07-13","form":813,"sessions":5797},{"wk":"2026-07-20","form":1803,"sessions":65943},{"wk":"2026-07-27","form":990,"sessions":76649},{"wk":"2026-08-03","form":901,"sessions":64795},{"wk":"2026-08-10","form":923,"sessions":68578},{"wk":"2026-08-17","form":704,"sessions":50651},{"wk":"2026-08-24","form":750,"sessions":56750},{"wk":"2026-08-31","form":163,"sessions":11433}],"built":{"signups":"2026-09-02T15:47:28.887621+00:00","icp-journeys":"2026-09-01T21:30:00.060823+00:00","journey-cube":"2026-09-01T23:44:32.923+00:00","journey-lakehouse":"2026-09-01T21:00:30.986+00:00"},"signups":[{"wk":"2026-07-13","signups":3209,"business":955,"freemail":2254},{"wk":"2026-07-20","signups":4321,"business":1275,"freemail":3046},{"wk":"2026-07-27","signups":4278,"business":1299,"freemail":2979},{"wk":"2026-08-03","signups":4247,"business":1259,"freemail":2988},{"wk":"2026-08-10","signups":4757,"business":1266,"freemail":3491},{"wk":"2026-08-17","signups":4524,"business":1268,"freemail":3256},{"wk":"2026-08-24","signups":4419,"business":1294,"freemail":3125},{"wk":"2026-08-31","signups":1450,"business":452,"freemail":998}],"windows":{"1w":["2026-08-24","2026-08-30"],"4w":["2026-08-03","2026-08-30"],"1wp":["2026-08-17","2026-08-23"]},"cubeOrigin":[{"wk":"2026-07-13","form":4,"origin":"chatgpt","sessions":97},{"wk":"2026-07-13","form":752,"origin":"direct / untagged","sessions":3260},{"wk":"2026-07-13","form":4,"origin":"google ads","sessions":320},{"wk":"2026-07-13","form":46,"origin":"google organic","sessions":1857},{"wk":"2026-07-13","form":1,"origin":"linkedin","sessions":22},{"wk":"2026-07-13","form":6,"origin":"other referral","sessions":241},{"wk":"2026-07-20","form":76,"origin":"chatgpt","sessions":1060},{"wk":"2026-07-20","form":967,"origin":"direct / untagged","sessions":29922},{"wk":"2026-07-20","form":29,"origin":"google ads","sessions":2493},{"wk":"2026-07-20","form":552,"origin":"google organic","sessions":28655},{"wk":"2026-07-20","form":4,"origin":"linkedin","sessions":468},{"wk":"2026-07-20","form":175,"origin":"other referral","sessions":3345},{"wk":"2026-07-27","form":65,"origin":"chatgpt","sessions":1144},{"wk":"2026-07-27","form":262,"origin":"direct / untagged","sessions":41658},{"wk":"2026-07-27","form":43,"origin":"google ads","sessions":2251},{"wk":"2026-07-27","form":492,"origin":"google organic","sessions":27827},{"wk":"2026-07-27","form":8,"origin":"linkedin","sessions":568},{"wk":"2026-07-27","form":120,"origin":"other referral","sessions":3201},{"wk":"2026-08-03","form":56,"origin":"chatgpt","sessions":1220},{"wk":"2026-08-03","form":208,"origin":"direct / untagged","sessions":29840},{"wk":"2026-08-03","form":61,"origin":"google ads","sessions":3283},{"wk":"2026-08-03","form":456,"origin":"google organic","sessions":26353},{"wk":"2026-08-03","form":4,"origin":"linkedin","sessions":394},{"wk":"2026-08-03","form":116,"origin":"other referral","sessions":3705},{"wk":"2026-08-10","form":41,"origin":"chatgpt","sessions":1487},{"wk":"2026-08-10","form":518,"origin":"direct / untagged","sessions":35685},{"wk":"2026-08-10","form":23,"origin":"google ads","sessions":2509},{"wk":"2026-08-10","form":290,"origin":"google organic","sessions":24968},{"wk":"2026-08-10","form":1,"origin":"linkedin","sessions":285},{"wk":"2026-08-10","form":50,"origin":"other referral","sessions":3644},{"wk":"2026-08-17","form":37,"origin":"chatgpt","sessions":1443},{"wk":"2026-08-17","form":392,"origin":"direct / untagged","sessions":24479},{"wk":"2026-08-17","form":11,"origin":"google ads","sessions":1943},{"wk":"2026-08-17","form":226,"origin":"google organic","sessions":20077},{"wk":"2026-08-17","form":1,"origin":"linkedin","sessions":315},{"wk":"2026-08-17","form":37,"origin":"other referral","sessions":2394},{"wk":"2026-08-24","form":83,"origin":"chatgpt","sessions":2039},{"wk":"2026-08-24","form":257,"origin":"direct / untagged","sessions":27634},{"wk":"2026-08-24","form":33,"origin":"google ads","sessions":2316},{"wk":"2026-08-24","form":270,"origin":"google organic","sessions":21718},{"wk":"2026-08-24","form":4,"origin":"linkedin","sessions":288},{"wk":"2026-08-24","form":103,"origin":"other referral","sessions":2755},{"wk":"2026-08-31","form":16,"origin":"chatgpt","sessions":373},{"wk":"2026-08-31","form":51,"origin":"direct / untagged","sessions":5352},{"wk":"2026-08-31","form":10,"origin":"google ads","sessions":533},{"wk":"2026-08-31","form":62,"origin":"google organic","sessions":4563},{"wk":"2026-08-31","form":null,"origin":"linkedin","sessions":50},{"wk":"2026-08-31","form":24,"origin":"other referral","sessions":562}],"signupsMeta":{"to":"2026-09-01","from":"2026-07-15","total":31205,"last_complete_week":"2026-08-24"},"ga4_last_day":"2026-08-31"}/*SNAP-END*/;
+const SNAP = /*SNAP*/{"icp":[{"wk":"2026-05-04","icp":89,"booked":190,"routed":277,"icp_booked":67},{"wk":"2026-05-11","icp":119,"booked":211,"routed":310,"icp_booked":96},{"wk":"2026-05-18","icp":93,"booked":193,"routed":259,"icp_booked":73},{"wk":"2026-05-25","icp":93,"booked":218,"routed":276,"icp_booked":75},{"wk":"2026-06-01","icp":112,"booked":254,"routed":338,"icp_booked":94},{"wk":"2026-06-08","icp":120,"booked":223,"routed":350,"icp_booked":89},{"wk":"2026-06-15","icp":118,"booked":225,"routed":341,"icp_booked":81},{"wk":"2026-06-22","icp":84,"booked":199,"routed":268,"icp_booked":71},{"wk":"2026-06-29","icp":86,"booked":201,"routed":270,"icp_booked":75},{"wk":"2026-07-06","icp":73,"booked":190,"routed":256,"icp_booked":56},{"wk":"2026-07-13","icp":93,"booked":233,"routed":304,"icp_booked":79},{"wk":"2026-07-20","icp":79,"booked":191,"routed":257,"icp_booked":65},{"wk":"2026-07-27","icp":94,"booked":192,"routed":293,"icp_booked":68},{"wk":"2026-08-03","icp":105,"booked":198,"routed":278,"icp_booked":84},{"wk":"2026-08-10","icp":90,"booked":185,"routed":267,"icp_booked":63},{"wk":"2026-08-17","icp":77,"booked":161,"routed":244,"icp_booked":53},{"wk":"2026-08-24","icp":86,"booked":167,"routed":229,"icp_booked":67},{"wk":"2026-08-31","icp":17,"booked":33,"routed":51,"icp_booked":15}],"cube":[{"wk":"2026-07-13","form":813,"sessions":5797},{"wk":"2026-07-20","form":1803,"sessions":65943},{"wk":"2026-07-27","form":990,"sessions":76649},{"wk":"2026-08-03","form":901,"sessions":64795},{"wk":"2026-08-10","form":923,"sessions":68578},{"wk":"2026-08-17","form":704,"sessions":50651},{"wk":"2026-08-24","form":750,"sessions":56750},{"wk":"2026-08-31","form":163,"sessions":11433}],"paid":[{"wk":"2026-01-05","paying":3327,"new_paid":606,"volume_usd":604367,"new_paid_recent":22},{"wk":"2026-01-12","paying":3513,"new_paid":598,"volume_usd":931460,"new_paid_recent":27},{"wk":"2026-01-19","paying":3439,"new_paid":504,"volume_usd":723822,"new_paid_recent":35},{"wk":"2026-01-26","paying":4839,"new_paid":1127,"volume_usd":922060,"new_paid_recent":491},{"wk":"2026-02-02","paying":4488,"new_paid":1285,"volume_usd":678375,"new_paid_recent":573},{"wk":"2026-02-09","paying":4581,"new_paid":1329,"volume_usd":659317,"new_paid_recent":568},{"wk":"2026-02-16","paying":4776,"new_paid":1366,"volume_usd":809483,"new_paid_recent":604},{"wk":"2026-02-23","paying":6835,"new_paid":1257,"volume_usd":1279643,"new_paid_recent":624},{"wk":"2026-03-02","paying":4959,"new_paid":982,"volume_usd":793784,"new_paid_recent":715},{"wk":"2026-03-09","paying":5269,"new_paid":1133,"volume_usd":825224,"new_paid_recent":830},{"wk":"2026-03-16","paying":5416,"new_paid":1138,"volume_usd":791854,"new_paid_recent":813},{"wk":"2026-03-23","paying":5343,"new_paid":1129,"volume_usd":1023346,"new_paid_recent":845},{"wk":"2026-03-30","paying":6087,"new_paid":1072,"volume_usd":1159635,"new_paid_recent":731},{"wk":"2026-04-06","paying":5830,"new_paid":1155,"volume_usd":959406,"new_paid_recent":727},{"wk":"2026-04-13","paying":5938,"new_paid":1125,"volume_usd":1034754,"new_paid_recent":712},{"wk":"2026-04-20","paying":5921,"new_paid":1042,"volume_usd":920783,"new_paid_recent":640},{"wk":"2026-04-27","paying":7042,"new_paid":1026,"volume_usd":1352024,"new_paid_recent":648},{"wk":"2026-05-04","paying":6190,"new_paid":983,"volume_usd":1169813,"new_paid_recent":601},{"wk":"2026-05-11","paying":6313,"new_paid":955,"volume_usd":1267745,"new_paid_recent":590},{"wk":"2026-05-18","paying":6186,"new_paid":923,"volume_usd":1032514,"new_paid_recent":558},{"wk":"2026-05-25","paying":5886,"new_paid":923,"volume_usd":938823,"new_paid_recent":601},{"wk":"2026-06-01","paying":7346,"new_paid":821,"volume_usd":1371419,"new_paid_recent":453},{"wk":"2026-06-08","paying":6745,"new_paid":916,"volume_usd":1461073,"new_paid_recent":562},{"wk":"2026-06-15","paying":4806,"new_paid":848,"volume_usd":832484,"new_paid_recent":640},{"wk":"2026-06-22","paying":9073,"new_paid":1132,"volume_usd":1407856,"new_paid_recent":691},{"wk":"2026-06-29","paying":9287,"new_paid":1340,"volume_usd":1491423,"new_paid_recent":944},{"wk":"2026-07-06","paying":7206,"new_paid":1083,"volume_usd":1242280,"new_paid_recent":766},{"wk":"2026-07-13","paying":7136,"new_paid":999,"volume_usd":1196973,"new_paid_recent":743},{"wk":"2026-07-20","paying":7181,"new_paid":956,"volume_usd":1343186,"new_paid_recent":725},{"wk":"2026-07-27","paying":10061,"new_paid":1052,"volume_usd":1572795,"new_paid_recent":808},{"wk":"2026-08-03","paying":7130,"new_paid":958,"volume_usd":1335703,"new_paid_recent":753},{"wk":"2026-08-10","paying":7170,"new_paid":916,"volume_usd":1760309,"new_paid_recent":718},{"wk":"2026-08-17","paying":7090,"new_paid":931,"volume_usd":1207937,"new_paid_recent":720},{"wk":"2026-08-24","paying":7073,"new_paid":936,"volume_usd":1315000,"new_paid_recent":751},{"wk":"2026-08-31","paying":8298,"new_paid":536,"volume_usd":686830,"new_paid_recent":420}],"built":{"paid":"2026-09-02T16:56:51.597+00:00","signups":"2026-09-02T16:25:56.946036+00:00","icp-accounts":"2026-09-02T16:26:07.528275+00:00","icp-journeys":"2026-09-01T21:30:00.060823+00:00","journey-cube":"2026-09-01T23:44:32.923+00:00","journey-lakehouse":"2026-09-01T21:00:30.986+00:00"},"icpAcc":[{"wk":"2026-08-10","new":15,"known":4,"intent":15,"accounts":15,"sessions":15},{"wk":"2026-08-17","new":9,"known":1,"intent":9,"accounts":9,"sessions":9},{"wk":"2026-08-24","new":19,"known":4,"intent":20,"accounts":20,"sessions":25},{"wk":"2026-08-31","new":14,"known":1,"intent":16,"accounts":16,"sessions":16}],"signups":[{"wk":"2026-07-13","signups":3209,"business":955,"freemail":2254},{"wk":"2026-07-20","signups":4321,"business":1275,"freemail":3046},{"wk":"2026-07-27","signups":4278,"business":1299,"freemail":2979},{"wk":"2026-08-03","signups":4247,"business":1259,"freemail":2988},{"wk":"2026-08-10","signups":4757,"business":1266,"freemail":3491},{"wk":"2026-08-17","signups":4524,"business":1268,"freemail":3256},{"wk":"2026-08-24","signups":4419,"business":1294,"freemail":3125},{"wk":"2026-08-31","signups":1450,"business":452,"freemail":998}],"windows":{"1w":["2026-08-24","2026-08-30"],"4w":["2026-08-03","2026-08-30"],"1wp":["2026-08-17","2026-08-23"]},"paidMeta":{"to":"2026-08-31","from":"2026-01-05","note":"new_paid = first successful net-positive charge in the week; new_paid_recent = of those, created within 30 days; volume_usd = net charges in USD that week; paying = distinct charged customers","source":"Billing mirror in the warehouse \u2014 successful charges and customer creations, aggregate only","built_at":"2026-09-02T16:56:51.597Z"},"cubeOrigin":[{"wk":"2026-07-13","form":4,"origin":"chatgpt","sessions":97},{"wk":"2026-07-13","form":752,"origin":"direct / untagged","sessions":3260},{"wk":"2026-07-13","form":4,"origin":"google ads","sessions":320},{"wk":"2026-07-13","form":46,"origin":"google organic","sessions":1857},{"wk":"2026-07-13","form":1,"origin":"linkedin","sessions":22},{"wk":"2026-07-13","form":6,"origin":"other referral","sessions":241},{"wk":"2026-07-20","form":76,"origin":"chatgpt","sessions":1060},{"wk":"2026-07-20","form":967,"origin":"direct / untagged","sessions":29922},{"wk":"2026-07-20","form":29,"origin":"google ads","sessions":2493},{"wk":"2026-07-20","form":552,"origin":"google organic","sessions":28655},{"wk":"2026-07-20","form":4,"origin":"linkedin","sessions":468},{"wk":"2026-07-20","form":175,"origin":"other referral","sessions":3345},{"wk":"2026-07-27","form":65,"origin":"chatgpt","sessions":1144},{"wk":"2026-07-27","form":262,"origin":"direct / untagged","sessions":41658},{"wk":"2026-07-27","form":43,"origin":"google ads","sessions":2251},{"wk":"2026-07-27","form":492,"origin":"google organic","sessions":27827},{"wk":"2026-07-27","form":8,"origin":"linkedin","sessions":568},{"wk":"2026-07-27","form":120,"origin":"other referral","sessions":3201},{"wk":"2026-08-03","form":56,"origin":"chatgpt","sessions":1220},{"wk":"2026-08-03","form":208,"origin":"direct / untagged","sessions":29840},{"wk":"2026-08-03","form":61,"origin":"google ads","sessions":3283},{"wk":"2026-08-03","form":456,"origin":"google organic","sessions":26353},{"wk":"2026-08-03","form":4,"origin":"linkedin","sessions":394},{"wk":"2026-08-03","form":116,"origin":"other referral","sessions":3705},{"wk":"2026-08-10","form":41,"origin":"chatgpt","sessions":1487},{"wk":"2026-08-10","form":518,"origin":"direct / untagged","sessions":35685},{"wk":"2026-08-10","form":23,"origin":"google ads","sessions":2509},{"wk":"2026-08-10","form":290,"origin":"google organic","sessions":24968},{"wk":"2026-08-10","form":1,"origin":"linkedin","sessions":285},{"wk":"2026-08-10","form":50,"origin":"other referral","sessions":3644},{"wk":"2026-08-17","form":37,"origin":"chatgpt","sessions":1443},{"wk":"2026-08-17","form":392,"origin":"direct / untagged","sessions":24479},{"wk":"2026-08-17","form":11,"origin":"google ads","sessions":1943},{"wk":"2026-08-17","form":226,"origin":"google organic","sessions":20077},{"wk":"2026-08-17","form":1,"origin":"linkedin","sessions":315},{"wk":"2026-08-17","form":37,"origin":"other referral","sessions":2394},{"wk":"2026-08-24","form":83,"origin":"chatgpt","sessions":2039},{"wk":"2026-08-24","form":257,"origin":"direct / untagged","sessions":27634},{"wk":"2026-08-24","form":33,"origin":"google ads","sessions":2316},{"wk":"2026-08-24","form":270,"origin":"google organic","sessions":21718},{"wk":"2026-08-24","form":4,"origin":"linkedin","sessions":288},{"wk":"2026-08-24","form":103,"origin":"other referral","sessions":2755},{"wk":"2026-08-31","form":16,"origin":"chatgpt","sessions":373},{"wk":"2026-08-31","form":51,"origin":"direct / untagged","sessions":5352},{"wk":"2026-08-31","form":10,"origin":"google ads","sessions":533},{"wk":"2026-08-31","form":62,"origin":"google organic","sessions":4563},{"wk":"2026-08-31","form":null,"origin":"linkedin","sessions":50},{"wk":"2026-08-31","form":24,"origin":"other referral","sessions":562}],"icpAccMeta":{"to":"2026-09-02","gap":"2026-08-13 to 2026-09-01 identification was paused (vendor credits)","from":"2026-08-10","gate":"enterprise size/revenue, high identification confidence, >=60s active, >=3 pages, careers/about excluded","accounts_total":57},"signupsMeta":{"to":"2026-09-01","from":"2026-07-15","total":31205,"last_complete_week":"2026-08-24"},"ga4_last_day":"2026-08-31"}/*SNAP-END*/;
 const SB = "https://xtafcezyayqcscdaaspo.supabase.co/rest/v1/viz_payloads";
 const KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh0YWZjZXp5YXlxY3NjZGFhc3BvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU0OTYwNTYsImV4cCI6MjEwMTA3MjA1Nn0.6reVt0Y2DE4bQWeUVt2K7KLfkm0hvMiY1AhdKXrFcsA";
 const GATE = "/enterprise-plan";
@@ -222,28 +222,40 @@ function reduceCube(p) {
   return { cube: Object.values(by).sort(s), cubeOrigin: Object.values(byo).sort(s) };
 }
 let D = SNAP, live = false;
+render();                      // instant paint from the embedded snapshot
 try {
-  const r = await fetch(SB + "?key=in.(journey-cube,icp-journeys,signups)&select=key,payload,built_at",
+  const r = await fetch(SB + "?key=in.(journey-cube,icp-journeys,signups,icp-accounts,paid)&select=key,built_at,pageWeekly:payload->pageWeekly,meta:payload->meta,weekly:payload->weekly",
     { headers: { apikey: KEY } });
   const rows = await r.json();
   const g = k => rows.find(x => x.key === k);
-  const cube = g("journey-cube"), icp = g("icp-journeys"), su = g("signups");
-  if (r.ok && cube && icp && cube.payload.pageWeekly && icp.payload.weekly) {
-    D = { ...reduceCube(cube.payload), icp: icp.payload.weekly,
-          signups: su ? su.payload.weekly : (SNAP && SNAP.signups) || [],
-          signupsMeta: su ? su.payload.meta : (SNAP && SNAP.signupsMeta) || {},
-          windows: cube.payload.meta.windows, ga4_last_day: cube.payload.meta.ga4_last_day,
+  const cube = g("journey-cube"), icp = g("icp-journeys"), su = g("signups"), ia = g("icp-accounts"), pd = g("paid");
+  if (r.ok && cube && icp && cube.pageWeekly && icp.weekly) {
+    D = { ...reduceCube(cube), icp: icp.weekly,
+          signups: su ? su.weekly : (SNAP && SNAP.signups) || [],
+          signupsMeta: su ? su.meta : (SNAP && SNAP.signupsMeta) || {},
+          icpAcc: ia ? ia.weekly : (SNAP && SNAP.icpAcc) || [],
+          icpAccMeta: ia ? ia.meta : (SNAP && SNAP.icpAccMeta) || {},
+          paid: pd ? pd.weekly : (SNAP && SNAP.paid) || [],
+          paidMeta: pd ? pd.meta : (SNAP && SNAP.paidMeta) || {},
+          windows: cube.meta.windows, ga4_last_day: cube.meta.ga4_last_day,
           built: Object.fromEntries(rows.map(x => [x.key, x.built_at])) };
     live = true;
   }
 } catch (_e) { /* embedded snapshot stands */ }
+if (live) render();            // swap to live numbers when they arrive
 
+function render() {
 const fmt = n => n == null ? "—" : Number(n).toLocaleString("en-US");
 const pct = (a, b) => b ? (100 * a / b).toFixed(1) + "%" : "—";
 const w1 = D.windows["1w"][0], w0 = D.windows["1wp"][0];
 const cubeBy = Object.fromEntries(D.cube.map(r => [r.wk, r]));
 const icpBy = Object.fromEntries(D.icp.map(r => [r.wk, r]));
 const suBy = Object.fromEntries((D.signups || []).map(r => [r.wk, r]));
+const iaBy = Object.fromEntries((D.icpAcc || []).map(r => [r.wk, r]));
+const pdBy = Object.fromEntries((D.paid || []).map(r => [r.wk, r]));
+// ChatGPT-referred sessions per week, straight from the cube origin split
+const gptBy = {};
+for (const r of D.cubeOrigin) if (r.origin === "chatgpt") gptBy[r.wk] = r;
 
 function delta(a, b, opts = {}) {
   if (a == null || !b) return `<span class="delta flat">n/a</span>`;
@@ -271,6 +283,10 @@ const fmtD = s => new Date(s + "T00:00:00").toLocaleDateString("en-US", { month:
 const c1 = cubeBy[w1] || {}, c0 = cubeBy[w0] || {};
 const i1 = icpBy[w1] || {}, i0 = icpBy[w0] || {};
 const s1 = suBy[w1] || {}, s0 = suBy[w0] || {};
+const a1 = iaBy[w1] || {}, a0 = iaBy[w0] || {};
+const p1 = pdBy[w1] || {}, p0 = pdBy[w0] || {};
+const usd = n => n == null ? "—" : "$" + Number(n).toLocaleString("en-US", { maximumFractionDigits: 0 });
+const g1 = gptBy[w1] || {}, g0 = gptBy[w0] || {};
 
 // ---- detail builders: weekly table + breakdown + notes, per metric
 function weeklyTable(cols, src) {
@@ -352,6 +368,37 @@ const DETAILS = {
       "History starts " + (D.signupsMeta && D.signupsMeta.from ? fmtD(D.signupsMeta.from) : "mid-July 2026") + ". A weekly AI-written commentary on this feed already exists elsewhere; bringing it onto this page is on the roadmap."],
     links: [["https://github.com/caio-camargo/retell-viz/blob/main/ROADMAP.md", "Roadmap: usage minutes and cohort views next"]]
   },
+  icp_accounts: {
+    title: "ICP accounts on the site", def: "Distinct enterprise-sized companies identified on the marketing site in the week: 1,000+ employees or $500M+ revenue, high identification confidence, at least 60 active seconds and 3 pages, careers/about excluded. The same gate as the sales alerts, so the two agree.",
+    left: () => weeklyTable([{ h: "accounts", f: r => fmt(r.accounts), raw: r => r.accounts }, { h: "new", f: r => fmt(r.new), raw: r => r.new }, { h: "showed intent", f: r => fmt(r.intent), raw: r => r.intent }, { h: "already in CRM", f: r => fmt(r.known), raw: r => r.known }], iaBy),
+    right: () => `<h4>Read with</h4><p class="def" style="margin:0"><b>New</b> = first time this company was identified. <b>Showed intent</b> = visited pricing, enterprise, contact, demo or booking pages. <b>Already in CRM</b> = a form submission or routed lead exists for that domain; the rest are accounts sales does not know about. Company names are in the private alert feed, not here.</p>`,
+    notes: ["Identification history starts Aug 10, 2026 and was paused Aug 13 to Sep 1 while vendor credits were exhausted, so those weeks read low.",
+      "Identification is reverse-IP at the company level and reliable; any person named in the alert feed is inferred.",
+      "Roughly nine in ten identified enterprise accounts never contact sales: the loss is before the form (see the identified-accounts view)."],
+    links: [["identified-accounts.html", "Enterprise visitors who never contact us"]]
+  },
+  chatgpt: {
+    title: "Sessions from ChatGPT", def: "Marketing-site sessions whose referrer was ChatGPT. Other AI assistants (Perplexity, Gemini, Copilot) are folded into other referral in the source split today; widening this to all AI assistants is on the roadmap.",
+    left: () => weeklyTable([{ h: "sessions", f: r => fmt(r.sessions), raw: r => r.sessions }, { h: "reached form", f: r => fmt(r.form), raw: r => r.form }, { h: "rate", f: r => pct(r.form, r.sessions), raw: r => r.form }], gptBy),
+    right: () => `<h4>Why it matters</h4><p class="def" style="margin:0">Small in sessions, large in leads: ChatGPT reaches the demo form at 3 to 4 times the site rate, and 32% of leads name it as how they heard of us, far above what analytics attributes to it, because much of that traffic arrives untagged as direct.</p>`,
+    notes: ["Measured attribution only (referrer). Self-reported heard-via-ChatGPT on the form is the larger, truer number and lives on the enterprise-leads page.",
+      "Same session-id undercount since Aug 12 as the sessions tile."],
+    links: [["journey/sankey-lakehouse.html#wow", "Week over week by source"], ["icp-journeys.html", "What leads say brought them"]]
+  },
+  paid: {
+    title: "New paying accounts", def: "Customers whose first successful, net-positive charge landed in the week, from the billing mirror in the warehouse. Most are self-serve signups converting within 30 days; the rest are older accounts paying for the first time.",
+    left: () => weeklyTable([{ h: "new paying", f: r => fmt(r.new_paid), raw: r => r.new_paid }, { h: "signed up <30d", f: r => fmt(r.new_paid_recent), raw: r => r.new_paid_recent }, { h: "charge volume", f: r => usd(r.volume_usd), raw: r => r.volume_usd }, { h: "paying customers", f: r => fmt(r.paying), raw: r => r.paying }], pdBy),
+    right: () => `<h4>Signup to paid</h4><table><tr><th></th><th class="n">last week</th><th class="n">prior</th></tr>
+      <tr><td>signups</td><td class="n">${fmt(s1.signups)}</td><td class="n">${fmt(s0.signups)}</td></tr>
+      <tr><td>new paying (all)</td><td class="n">${fmt(p1.new_paid)}</td><td class="n">${fmt(p0.new_paid)}</td></tr>
+      <tr><td>new paying, signed up &lt;30d</td><td class="n">${fmt(p1.new_paid_recent)}</td><td class="n">${fmt(p0.new_paid_recent)}</td></tr>
+      <tr><td>weekly charge volume (USD)</td><td class="n">${usd(p1.volume_usd)}</td><td class="n">${usd(p0.volume_usd)}</td></tr></table>
+      <p class="def" style="margin:8px 0 0">The 30-day cohort is not the same people as this week's signups, so the two rows are a ratio index, not a conversion rate.</p>`,
+    notes: ["Charge volume is net of refunds, USD charges only, cash basis: what was charged that week, not recognised revenue.",
+      "Paying customers = distinct customers charged in the week, dominated by usage auto-recharges.",
+      "The billing mirror syncs on the warehouse schedule; the current partial week always reads low."],
+    links: [["https://github.com/caio-camargo/retell-viz/blob/main/ROADMAP.md", "Roadmap: usage minutes and cohort views next"]]
+  },
 };
 
 const tiles = [
@@ -367,6 +414,13 @@ const tiles = [
     d: delta(i1.icp_booked, i0.icp_booked), p: fmt(i0.icp_booked), s: series(icpBy, r => r.icp_booked) },
   { id: "signups", k: "Self-serve signups", v: fmt(s1.signups) + `<small>${pct(s1.business, s1.signups)} business</small>`,
     d: delta(s1.signups, s0.signups), p: fmt(s0.signups), s: series(suBy, r => r.signups) },
+  { id: "icp_accounts", k: "ICP accounts on the site", v: fmt(a1.accounts) + `<small>${fmt(a1.new)} new</small>`,
+    d: delta(a1.accounts, a0.accounts), p: fmt(a0.accounts), s: series(iaBy, r => r.accounts),
+    n: "identification paused Aug 13 to Sep 1" },
+  { id: "chatgpt", k: "Sessions from ChatGPT", v: fmt(g1.sessions) + `<small>${pct(g1.form, g1.sessions)} reach form</small>`,
+    d: delta(g1.sessions, g0.sessions), p: fmt(g0.sessions), s: series(gptBy, r => r.sessions) },
+  { id: "paid", k: "New paying accounts", v: fmt(p1.new_paid) + `<small>${usd(p1.volume_usd)} charged</small>`,
+    d: delta(p1.new_paid, p0.new_paid), p: fmt(p0.new_paid), s: series(pdBy, r => r.new_paid) },
 ];
 document.getElementById("tiles").innerHTML = tiles.map(t => `
   <button class="tile" data-id="${t.id}" aria-expanded="false">
@@ -378,6 +432,7 @@ document.getElementById("tiles").innerHTML = tiles.map(t => `
   </button>`).join("");
 
 const detail = document.getElementById("detail");
+const prevOpen = window.__openId || null;
 let openId = null;
 function openDetail(id) {
   document.querySelectorAll(".tile").forEach(b => { b.classList.toggle("open", b.dataset.id === id); b.setAttribute("aria-expanded", b.dataset.id === id); });
@@ -390,10 +445,12 @@ function openDetail(id) {
   detail.classList.add("show"); openId = id;
   document.getElementById("closeDetail").addEventListener("click", () => openDetail(null));
 }
-document.getElementById("tiles").addEventListener("click", e => {
+document.getElementById("tiles").onclick = e => {
   const b = e.target.closest(".tile"); if (!b) return;
   openDetail(openId === b.dataset.id ? null : b.dataset.id);
-});
+  window.__openId = openId;
+};
+if (prevOpen) openDetail(prevOpen);
 
 document.getElementById("wkLabel").textContent =
   `${fmtD(D.windows["1w"][0])} – ${fmtD(D.windows["1w"][1])} vs ${fmtD(D.windows["1wp"][0])} – ${fmtD(D.windows["1wp"][1])} · sparklines: last ${weeks.length} weeks`;
@@ -403,8 +460,10 @@ document.getElementById("freshness").textContent =
   (live ? "Live data" : "Embedded snapshot") + " · warehouse through " + D.ga4_last_day
   + " · site metrics built " + stamp("journey-cube") + " · lead metrics " + stamp("icp-journeys") + " · signups " + stamp("signups");
 
+}
+
 const btn = document.getElementById("presentBtn");
-const setP = on => { document.body.classList.toggle("present", on); btn.textContent = on ? "Exit presentation" : "Presentation mode"; if (on) openDetail(null); };
+const setP = on => { document.body.classList.toggle("present", on); btn.textContent = on ? "Exit presentation" : "Presentation mode"; if (on) { document.getElementById("detail").classList.remove("show"); document.querySelectorAll(".tile.open").forEach(t => t.classList.remove("open")); window.__openId = null; } };
 btn.addEventListener("click", () => setP(!document.body.classList.contains("present")));
 if (new URLSearchParams(location.search).has("present")) setP(true);
 </script>

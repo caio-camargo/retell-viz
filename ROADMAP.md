@@ -25,7 +25,7 @@ trends from sales calls are in scope — never verbatims, never per-rep.
 
 | # | Item | Notes | Size |
 |---|---|---|---|
-| 1 | **Three more headline tiles**: new paid accounts (pairs with signups), ICP accounts seen on the site (count), visitors from AI assistants | Paid accounts need a billing fetch worker alongside the signups one; ICP accounts is a count over the identified-visitor feed; AI-assistant visitors come from the warehouse origin classification already used by the funnel. | S–M |
+| 1 | ~~Three more headline tiles~~ — **done 2026-09-02**: new paying accounts (with weekly charge volume), ICP accounts on the site, sessions from ChatGPT | Widening the ChatGPT tile to all AI assistants (Perplexity, Gemini, Copilot…) needs the origin classification in the warehouse funnel extended — small, queued under #12. | — |
 | 2 | **Pipeline health section** on the home | All computed already: per-source freshness, metric anomaly verdicts, form-leak count, attribution capture rates (UTM %, client-id %), feed liveness, payload build stamps. One row per source, green/amber/red, last run. | S |
 | 3 | **Usage cohorts page + weekly AI commentary** — one build | Cohort counts and minute totals per week (no customer names), plus the commentary pattern from the weekly usage report: SQL computes every figure including streaks, the model writes prose and a carryover note, a human-correction column feeds forward. Commentary renders as a fourth section in each tile's panel and as the Monday message. | M |
 | 4 | **Ads full-funnel on nightly refresh** | Spend → session → form → routed → booked per campaign (ad clicks reconcile with sessions ~1:1). Replaces the dated paid-ads snapshot. LinkedIn ads data is stale upstream since June. | M |
@@ -57,6 +57,9 @@ trends from sales calls are in scope — never verbatims, never per-rep.
 
 ## Changelog
 
+- 2026-09-02 (later) — Three more live tiles: new paying accounts + charge volume (billing
+  mirror), ICP accounts on the site (same gate as the sales alerts), sessions from ChatGPT;
+  tiles now paint instantly from the embedded snapshot and swap to live data.
 - 2026-09-02 — Home page rebuilt around week-over-week headline tiles (sessions, form
   reach, leads routed, ICP leads, ICP bookings, signups), expandable to their weekly data,
   source breakdowns and notes; presentation mode; question-grouped links with live/snapshot
