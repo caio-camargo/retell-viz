@@ -8,7 +8,7 @@ Live at **https://caio-camargo.github.io/retell-viz/**
 
 | Page | What it is |
 |---|---|
-| [`index.html`](index.html) | Landing page |
+| [`index.html`](index.html) | Home — last complete week vs prior (sessions, form reach, leads routed, ICP leads, ICP bookings) with sparklines, live from the daily payloads; question-grouped links to every view with live/snapshot badges. `?present` (or the button) shows only the headline tiles, larger, for screenshare |
 | [`funnel-at-a-glance.html`](funnel-at-a-glance.html) | One-page funnel briefing (all-hands, Aug 14 2026) |
 | [`journey/sankey-lakehouse.html`](journey/sankey-lakehouse.html) | Warehouse funnel, 235k sessions |
 | [`journey/sankey-all.html`](journey/sankey-all.html) | Identified-traffic funnel, 22.8k sessions |

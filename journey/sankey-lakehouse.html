@@ -896,7 +896,7 @@ if (LAKE && CUBE) {
   };
   const wowScopes = TIER ? [[T_LABEL[TIER], "tier"]]
     : [["total", null], ...[...new Set(PW.map(r => r.origin))].map(o => [o, o])];
-  html += `<h2>Week over week \u2014 ${w1k[0]} \u2192 ${w1k[1]} vs ${w0k[0]} \u2192 ${w0k[1]}</h2>
+  html += `<h2 id="wow">Week over week \u2014 ${w1k[0]} \u2192 ${w1k[1]} vs ${w0k[0]} \u2192 ${w0k[1]}</h2>
     <div class="lede">Last complete Mon\u2013Sun week against the one before it.</div>
     <table class="oo"><tr><th>${TIER ? "audience" : "source"}</th><th>sessions</th>
     <th>prior</th><th>\u0394</th><th>reach form</th><th>prior</th></tr>` +
@@ -910,6 +910,8 @@ if (LAKE && CUBE) {
 
   rep.innerHTML = html;
   document.getElementById("foot").before(rep);
+  // deep link from the home page: the section only exists after this render
+  if (location.hash === "#wow") setTimeout(() => document.getElementById("wow").scrollIntoView(), 400);
 }
 
 </script>

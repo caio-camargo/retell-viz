@@ -3,106 +3,271 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Retell Website Visualizations</title>
+<title>Retell Inbound — Weekly View</title>
 <style>
   :root {
     color-scheme: light;
     --surface: #fcfcfb; --page: #f9f9f7; --ink-1: #0b0b0b; --ink-2: #52514e;
-    --muted: #898781; --border: rgba(11,11,11,0.10); --blue: #2a78d6;
+    --muted: #898781; --border: rgba(11,11,11,0.10);
+    --card: #ffffff; --card-stroke: #d6d5cd;
+    --accent: #2a78d6; --accent-faint: #eaf1fb; --spark: #1c5fb8;
+    --good: #1a7f4b; --good-soft: #e6f4ec; --bad: #b83232; --bad-soft: #fbeaea;
+    --live: #1a7f4b;
   }
   @media (prefers-color-scheme: dark) {
     :root:where(:not([data-theme="light"])) {
       color-scheme: dark;
       --surface: #1a1a19; --page: #0d0d0d; --ink-1: #ffffff; --ink-2: #c3c2b7;
-      --muted: #898781; --border: rgba(255,255,255,0.10); --blue: #3987e5;
+      --muted: #898781; --border: rgba(255,255,255,0.10);
+      --card: #262625; --card-stroke: #3a3a37;
+      --accent: #3987e5; --accent-faint: #1d2735; --spark: #5493e2;
+      --good: #4fbf7f; --good-soft: #17301f; --bad: #e57373; --bad-soft: #3a1c1c;
+      --live: #4fbf7f;
     }
   }
   [data-theme="dark"] {
     color-scheme: dark;
     --surface: #1a1a19; --page: #0d0d0d; --ink-1: #ffffff; --ink-2: #c3c2b7;
-    --muted: #898781; --border: rgba(255,255,255,0.10); --blue: #3987e5;
+    --muted: #898781; --border: rgba(255,255,255,0.10);
+    --card: #262625; --card-stroke: #3a3a37;
+    --accent: #3987e5; --accent-faint: #1d2735; --spark: #5493e2;
+    --good: #4fbf7f; --good-soft: #17301f; --bad: #e57373; --bad-soft: #3a1c1c;
+    --live: #4fbf7f;
   }
   * { box-sizing: border-box; margin: 0; }
   body { background: var(--page); color: var(--ink-1);
-    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
-    padding: 40px clamp(16px, 4vw, 60px); }
-  main { max-width: 860px; margin: 0 auto; }
-  h1 { font-size: 24px; letter-spacing: -0.01em; }
-  .sub { color: var(--ink-2); margin: 6px 0 28px; }
-  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin: 26px 0 10px; }
-  .cards { display: grid; gap: 10px; }
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 32px clamp(16px, 4vw, 56px) 56px; }
+  main { max-width: 1180px; margin: 0 auto; }
+  .top { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+  h1 { font-size: 26px; letter-spacing: -0.015em; }
+  .sub { color: var(--ink-2); margin: 6px 0 22px; font-size: 15px; max-width: 900px; }
+  button.present { font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 8px; cursor: pointer;
+    border: 1px solid var(--card-stroke); background: var(--card); color: var(--ink-2); }
+  button.present:hover { border-color: var(--accent); color: var(--accent); }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); margin: 30px 0 10px; }
+  h2 .wk { text-transform: none; letter-spacing: 0; font-weight: 500; color: var(--ink-2); margin-left: 10px; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
+  .tile { background: var(--card); border: 1px solid var(--card-stroke); border-radius: 12px; padding: 16px 18px 14px; display: flex; flex-direction: column; gap: 6px; }
+  .tile .k { font-size: 13px; color: var(--ink-2); font-weight: 600; }
+  .tile .v { font-size: 36px; font-weight: 750; letter-spacing: -0.02em; line-height: 1.05; }
+  .tile .v small { font-size: 15px; font-weight: 500; color: var(--ink-2); margin-left: 6px; }
+  .tile .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .delta { font-size: 13.5px; font-weight: 700; padding: 2px 9px; border-radius: 20px; }
+  .delta.up { color: var(--good); background: var(--good-soft); }
+  .delta.down { color: var(--bad); background: var(--bad-soft); }
+  .delta.flat { color: var(--ink-2); background: var(--accent-faint); }
+  .prior { font-size: 12.5px; color: var(--muted); }
+  .spark { margin-top: 4px; }
+  .spark svg { display: block; width: 100%; height: 34px; }
+  .note { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
   a.card { display: block; background: var(--surface); border: 1px solid var(--border);
-    border-radius: 10px; padding: 14px 18px; text-decoration: none; color: inherit; }
-  a.card:hover { border-color: var(--blue); }
-  a.card .t { font-weight: 650; color: var(--blue); }
-  a.card .d { color: var(--ink-2); font-size: 13.5px; margin-top: 3px; }
-  a.card .w { color: var(--muted); font-size: 12px; margin-top: 5px; }
-  footer { color: var(--muted); font-size: 12.5px; margin-top: 34px; }
+    border-radius: 12px; padding: 14px 16px; text-decoration: none; color: inherit; }
+  a.card:hover { border-color: var(--accent); }
+  a.card .t { font-weight: 650; color: var(--accent); font-size: 16px; }
+  a.card .d { color: var(--ink-2); font-size: 14px; margin-top: 4px; }
+  a.card .w { font-size: 12px; margin-top: 8px; display: flex; align-items: center; gap: 6px; color: var(--muted); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); display: inline-block; }
+  .dot.live { background: var(--live); }
+  .lead { border-color: var(--accent); background: var(--accent-faint); }
+  footer { color: var(--muted); font-size: 13px; margin-top: 36px; max-width: 900px; line-height: 1.55; }
+  footer b { color: var(--ink-2); }
+  /* presentation mode: only the glance layer, bigger */
+  body.present { font-size: 18px; }
+  body.present h1 { font-size: 34px; }
+  body.present .tiles { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px; }
+  @media (min-width: 1100px) { body.present .tiles { grid-template-columns: repeat(5, 1fr); } }
+  body.present .tile .v { font-size: 52px; }
+  body.present .tile .k { font-size: 15px; }
+  body.present .delta { font-size: 16px; }
+  body.present .spark svg { height: 48px; }
+  body.present .links, body.present footer, body.present .sub { display: none; }
 </style>
 </head>
 <body>
 <main>
-  <h1>Retell website visualizations</h1>
-  <div class="sub">Interactive views of how visitors move through the marketing site — where they come from, where they go, and what walks them toward a booked meeting. All data is anonymized aggregate: counts and rates only.</div>
+  <div class="top">
+    <h1>Retell inbound — the weekly view</h1>
+    <button class="present" id="presentBtn" title="Only the headline tiles, larger — for screenshare">Presentation mode</button>
+  </div>
+  <div class="sub">What the marketing site did last week and where enterprise leads came from, refreshed nightly from the warehouse.
+    Headlines compare the <b>last complete Mon–Sun week</b> with the week before. Everything here is aggregate — counts and rates, no identities.</div>
 
-  <h2>Funnel overview</h2>
+  <h2>Last week at a glance <span class="wk" id="wkLabel"></span></h2>
+  <div class="tiles" id="tiles"></div>
+  <div class="note" id="freshness"></div>
+
+  <div class="links">
+  <h2>Week over week — by source</h2>
   <div class="cards">
-    <a class="card" href="funnel-at-a-glance.html">
-      <div class="t">Funnel at a glance</div>
-      <div class="d">One page, five panels: the stage funnel, the one-page-visit cliff, which pages pull visitors toward the form, the channel-attribution gap, and what comes out the bottom.</div>
-      <div class="w">All-hands briefing · Aug 14 2026</div>
+    <a class="card lead" href="journey/sankey-lakehouse.html#wow">
+      <div class="t">Which sources grew last week, and where their visitors leak</div>
+      <div class="d">Sessions and form-reach per acquisition source, last complete week vs prior, plus the pages where each source's visitors most often stop. Switch audience (all traffic · Google Ads · SMB / mid-market / enterprise) and window at the top of the page.</div>
+      <div class="w"><span class="dot live"></span> live · refreshed nightly</div>
     </a>
     <a class="card" href="icp-journeys.html">
-      <div class="t">ICP lead journeys — who raises a hand, and the path they took</div>
-      <div class="d">Every enterprise-form lead since Nov 2025, classified against the ICP model, with the pre-submission website journey per lead: weekly trend, landing pages, sources, and how long ICPs actually consider.</div>
-      <div class="w">Live — refreshed daily</div>
+      <div class="t">Enterprise leads week by week — routed, ICP, booked</div>
+      <div class="d">Every enterprise-form lead since Nov 2025 against the ICP model: the weekly trend, which pages ICP journeys land on, what leads say brought them, and how long they consider before raising a hand.</div>
+      <div class="w"><span class="dot live"></span> live · refreshed nightly</div>
+    </a>
+  </div>
+
+  <h2>Enterprise &amp; ICP</h2>
+  <div class="cards">
+    <a class="card" href="journey/sankey.html">
+      <div class="t">ICP-lead funnel with real booking outcomes</div>
+      <div class="d">Qualified leads only, step by step, ending in booked / not booked. 42% of their marketing sessions end in a meeting — the same site as the all-traffic funnel, a different denominator.</div>
+      <div class="w"><span class="dot"></span> snapshot · Jun 1 – Jul 20 2026 · 97 sessions</div>
     </a>
     <a class="card" href="identified-accounts.html">
-      <div class="t">Identified accounts — the ones who never raise a hand</div>
-      <div class="d">The account-level view upstream of every form metric: engaged, enterprise-sized identified visitors, 91% of whom never contact sales. The loss happens before the form.</div>
-      <div class="w">Aug 4–10 2026 · reverse-IP identification, account grain</div>
+      <div class="t">Enterprise visitors who never contact us</div>
+      <div class="d">Engaged, enterprise-sized companies identified on the site: 155 workable accounts in a week, 91% of which never reach the CRM. The loss happens before the form.</div>
+      <div class="w"><span class="dot"></span> snapshot · Aug 4–10 2026</div>
+    </a>
+    <a class="card" href="journey/index.html">
+      <div class="t">ICP journey gravity — which pages pull toward a booking</div>
+      <div class="d">Per page, the probability a lead's journey ends booked, modeled over real lead paths. Two lenses that disagree, and the disagreement is the finding.</div>
+      <div class="w"><span class="dot"></span> snapshot · 53-lead cohort</div>
     </a>
   </div>
 
-  <h2>Journey funnels — step by step through a session</h2>
+  <h2>The whole site — funnel &amp; leaks</h2>
   <div class="cards">
     <a class="card" href="journey/sankey-lakehouse.html">
-      <div class="t">Warehouse funnel · 235k sessions</div>
-      <div class="d">Every marketing-site session from the analytics warehouse, step-indexed. The full picture at scale: 90% one-page sessions, 1.5% reach the form.</div>
-      <div class="w">Jul 19 – Aug 11 2026</div>
+      <div class="t">All traffic, step by step</div>
+      <div class="d">Every marketing-site session from the warehouse: 90% are one page and gone, ~1.3% reach the demo form. Below the chart: drop-off tables and the pages most likely to lead to the form.</div>
+      <div class="w"><span class="dot live"></span> live · Jul 19 2026 → today</div>
     </a>
-    <a class="card" href="journey/sankey-all.html">
-      <div class="t">Identified-traffic funnel · 22.8k sessions</div>
-      <div class="d">Sessions from visitors whose company could be identified. Reaches the form at 2.4% — a measurably buyer-heavier slice than raw traffic.</div>
-      <div class="w">Jun 30 – Aug 10 2026</div>
-    </a>
-    <a class="card" href="journey/sankey-ads.html">
-      <div class="t">Paid-ads funnel</div>
-      <div class="d">Sessions that arrived from a paid ad, <b>split by campaign</b> — hover any campaign for its spend, cost per click and cost per session. Google Ads is 99% of this traffic. A form-reachers-only view is one click in from the header.</div>
-      <div class="w">Warehouse sessions · Jul 19 2026 →</div>
-    </a>
-    <a class="card" href="journey/sankey.html">
-      <div class="t">ICP-lead funnel · 97 sessions</div>
-      <div class="d">Qualified leads only, with real booking outcomes: 42% of their marketing sessions end booked. Same site as the 235k view — the difference is the denominator.</div>
-      <div class="w">Jun 1 – Jul 20 2026</div>
-    </a>
-  </div>
-
-  <h2>Journey gravity graphs — where each page pulls</h2>
-  <div class="cards">
-    <a class="card" href="journey/index.html">
-      <div class="t">ICP journey gravity graph</div>
-      <div class="d">Absorbing Markov chain over real lead journeys: per page, the probability the visitor's story ends in a booked meeting. Two lenses that disagree — and the disagreement is the finding.</div>
-      <div class="w">53-lead cohort · booking outcomes</div>
+    <a class="card" href="funnel-at-a-glance.html">
+      <div class="t">Funnel at a glance — the five-panel briefing</div>
+      <div class="d">Stage funnel, the one-page cliff, pages that walk visitors to the form, the channel-attribution gap (ChatGPT is 32% of leads and near-invisible to analytics), and what comes out the bottom.</div>
+      <div class="w"><span class="dot"></span> snapshot · all-hands Aug 14 2026</div>
     </a>
     <a class="card" href="journey/index-lakehouse.html">
-      <div class="t">Warehouse gravity graph</div>
-      <div class="d">The same model over 235k sessions: per page, the probability a session goes on to reach the sales form. Industry &amp; feature pages at 2–3× base; the blog near zero.</div>
-      <div class="w">235k sessions · form-reach outcome</div>
+      <div class="t">Site gravity — where each page pulls</div>
+      <div class="d">The same model over every session: per page, the probability of going on to reach the form. Industry and feature pages at 2–3× the site rate; the blog near zero.</div>
+      <div class="w"><span class="dot live"></span> live · refreshed nightly</div>
     </a>
   </div>
 
-  <footer>Counts and rates only — no identities, no emails, no per-visitor data. Each page states its own data window and caveats.</footer>
+  <h2>Paid &amp; identified traffic</h2>
+  <div class="cards">
+    <a class="card" href="journey/sankey-ads.html">
+      <div class="t">Paid-ads funnel, by campaign</div>
+      <div class="d">Sessions that arrived from an ad, split by campaign with spend, cost per click and cost per session on hover. Google Ads is 99% of paid traffic.</div>
+      <div class="w"><span class="dot"></span> snapshot · Jul 19 – Aug 23 2026</div>
+    </a>
+    <a class="card" href="journey/sankey-all.html">
+      <div class="t">Identified-company traffic funnel</div>
+      <div class="d">Sessions from visitors whose company could be identified — a buyer-heavier slice that reaches the form at 2.4%.</div>
+      <div class="w"><span class="dot"></span> snapshot · Jun 30 – Aug 10 2026 · 22.8k sessions</div>
+    </a>
+  </div>
+  </div>
+
+  <footer>
+    <b>Reading the headlines.</b> Sessions and form-reach come from the analytics warehouse; leads, ICP and bookings from the scheduler and CRM. Form-reach means the session touched the demo-request page — submission and booking are only observable on the lead metrics.
+    <b>Known undercount:</b> a consent-banner change on Aug 12 drops the session id on a growing share of pageviews (~20% by the week of Aug 17), so recent session counts read low — treat session week-over-week as directional and lean on the lead metrics. Pages marked <span class="dot live" style="vertical-align:middle"></span> refresh nightly; snapshots state their own window.
+  </footer>
 </main>
+
+<script type="module">
+const SNAP = /*SNAP*/{"cube":[{"wk":"2026-07-13","form":813,"sessions":5797},{"wk":"2026-07-20","form":1803,"sessions":65943},{"wk":"2026-07-27","form":990,"sessions":76649},{"wk":"2026-08-03","form":901,"sessions":64795},{"wk":"2026-08-10","form":923,"sessions":68578},{"wk":"2026-08-17","form":704,"sessions":50651},{"wk":"2026-08-24","form":750,"sessions":56750},{"wk":"2026-08-31","form":163,"sessions":11433}],"icp":[{"wk":"2026-05-04","icp":89,"booked":190,"routed":277,"icp_booked":67},{"wk":"2026-05-11","icp":119,"booked":211,"routed":310,"icp_booked":96},{"wk":"2026-05-18","icp":93,"booked":193,"routed":259,"icp_booked":73},{"wk":"2026-05-25","icp":93,"booked":218,"routed":276,"icp_booked":75},{"wk":"2026-06-01","icp":112,"booked":254,"routed":338,"icp_booked":94},{"wk":"2026-06-08","icp":120,"booked":223,"routed":350,"icp_booked":89},{"wk":"2026-06-15","icp":118,"booked":225,"routed":341,"icp_booked":81},{"wk":"2026-06-22","icp":84,"booked":199,"routed":268,"icp_booked":71},{"wk":"2026-06-29","icp":86,"booked":201,"routed":270,"icp_booked":75},{"wk":"2026-07-06","icp":73,"booked":190,"routed":256,"icp_booked":56},{"wk":"2026-07-13","icp":93,"booked":233,"routed":304,"icp_booked":79},{"wk":"2026-07-20","icp":79,"booked":191,"routed":257,"icp_booked":65},{"wk":"2026-07-27","icp":94,"booked":192,"routed":293,"icp_booked":68},{"wk":"2026-08-03","icp":105,"booked":198,"routed":278,"icp_booked":84},{"wk":"2026-08-10","icp":90,"booked":185,"routed":267,"icp_booked":63},{"wk":"2026-08-17","icp":77,"booked":161,"routed":244,"icp_booked":53},{"wk":"2026-08-24","icp":86,"booked":167,"routed":229,"icp_booked":67},{"wk":"2026-08-31","icp":17,"booked":33,"routed":51,"icp_booked":15}],"windows":{"1w":["2026-08-24","2026-08-30"],"4w":["2026-08-03","2026-08-30"],"1wp":["2026-08-17","2026-08-23"]},"ga4_last_day":"2026-08-31","built":{"icp-journeys":"2026-09-01T21:30:00.060823+00:00","journey-cube":"2026-09-01T23:44:32.923+00:00","journey-lakehouse":"2026-09-01T21:00:30.986+00:00"}}/*SNAP-END*/;
+const SB = "https://xtafcezyayqcscdaaspo.supabase.co/rest/v1/viz_payloads";
+const KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh0YWZjZXp5YXlxY3NjZGFhc3BvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU0OTYwNTYsImV4cCI6MjEwMTA3MjA1Nn0.6reVt0Y2DE4bQWeUVt2K7KLfkm0hvMiY1AhdKXrFcsA";
+const GATE = "/enterprise-plan";
+
+// Reduce the two live payloads to the same shape as the embedded snapshot.
+// (The snapshot is produced by an equivalent SQL reduction at build time.)
+function reduceCube(p) {
+  const by = {};
+  for (const r of p.pageWeekly) {
+    const w = by[r.wk] || (by[r.wk] = { wk: r.wk, sessions: 0, form: 0 });
+    w.sessions += r.ent;
+    if (r.node === GATE) w.form += r.vis;
+  }
+  return Object.values(by).sort((a, b) => a.wk < b.wk ? -1 : 1);
+}
+let D = SNAP, live = false;
+try {
+  const r = await fetch(SB + "?key=in.(journey-cube,icp-journeys)&select=key,payload,built_at",
+    { headers: { apikey: KEY } });
+  const rows = await r.json();
+  const cube = rows.find(x => x.key === "journey-cube"), icp = rows.find(x => x.key === "icp-journeys");
+  if (r.ok && cube && icp && cube.payload.pageWeekly && icp.payload.weekly) {
+    D = { cube: reduceCube(cube.payload), icp: icp.payload.weekly,
+          windows: cube.payload.meta.windows, ga4_last_day: cube.payload.meta.ga4_last_day,
+          built: { "journey-cube": cube.built_at, "icp-journeys": icp.built_at } };
+    live = true;
+  }
+} catch (_e) { /* embedded snapshot stands */ }
+
+const fmt = n => Number(n).toLocaleString("en-US");
+const pct = (a, b) => b ? (100 * a / b).toFixed(1) + "%" : "—";
+const w1 = D.windows["1w"][0], w0 = D.windows["1wp"][0];
+const cubeBy = Object.fromEntries(D.cube.map(r => [r.wk, r]));
+const icpBy = Object.fromEntries(D.icp.map(r => [r.wk, r]));
+
+function delta(a, b) {
+  if (!b) return `<span class="delta flat">n/a</span>`;
+  const d = (a - b) / b;
+  const cls = Math.abs(d) < 0.005 ? "flat" : d > 0 ? "up" : "down";
+  const arrow = cls === "up" ? "▲" : cls === "down" ? "▼" : "•";
+  return `<span class="delta ${cls}">${arrow} ${d > 0 ? "+" : ""}${(100 * d).toFixed(0)}%</span>`;
+}
+function spark(vals) {
+  const v = vals.filter(x => x != null);
+  if (v.length < 2) return "";
+  const W = 200, H = 34, max = Math.max(...v), min = Math.min(...v);
+  const x = i => 4 + i * (W - 8) / (v.length - 1);
+  const y = n => 4 + (H - 8) * (1 - (max === min ? 0.5 : (n - min) / (max - min)));
+  const d = v.map((n, i) => (i ? "L" : "M") + x(i).toFixed(1) + " " + y(n).toFixed(1)).join(" ");
+  const li = v.length - 1;
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+    <path d="${d}" fill="none" stroke="var(--spark)" stroke-width="2" vector-effect="non-scaling-stroke"/>
+    <circle cx="${x(li).toFixed(1)}" cy="${y(v[li]).toFixed(1)}" r="3.5" fill="var(--spark)" vector-effect="non-scaling-stroke"/></svg>`;
+}
+// last 8 complete weeks ending at w1
+const weeks = D.cube.map(r => r.wk).filter(w => w <= w1).slice(-8);
+const series = (src, f) => weeks.map(w => (src[w] ? f(src[w]) : null));
+
+const c1 = cubeBy[w1] || {}, c0 = cubeBy[w0] || {};
+const i1 = icpBy[w1] || {}, i0 = icpBy[w0] || {};
+const tiles = [
+  { k: "Sessions", v: fmt(c1.sessions), d: delta(c1.sessions, c0.sessions), p: fmt(c0.sessions),
+    s: series(cubeBy, r => r.sessions), n: "⚠ undercounted since Aug 12 — directional" },
+  { k: "Reached the demo form", v: fmt(c1.form) + `<small>${pct(c1.form, c1.sessions)} of sessions</small>`,
+    d: delta(c1.form, c0.form), p: fmt(c0.form) + " · " + pct(c0.form, c0.sessions), s: series(cubeBy, r => r.form) },
+  { k: "Leads routed", v: fmt(i1.routed), d: delta(i1.routed, i0.routed), p: fmt(i0.routed),
+    s: series(icpBy, r => r.routed) },
+  { k: "ICP leads", v: fmt(i1.icp) + `<small>${pct(i1.icp, i1.routed)} of routed</small>`,
+    d: delta(i1.icp, i0.icp), p: fmt(i0.icp), s: series(icpBy, r => r.icp) },
+  { k: "ICP meetings booked", v: fmt(i1.icp_booked) + `<small>${pct(i1.icp_booked, i1.icp)} of ICP</small>`,
+    d: delta(i1.icp_booked, i0.icp_booked), p: fmt(i0.icp_booked), s: series(icpBy, r => r.icp_booked) },
+];
+document.getElementById("tiles").innerHTML = tiles.map(t => `
+  <div class="tile">
+    <div class="k">${t.k}</div>
+    <div class="v">${t.v}</div>
+    <div class="row">${t.d}<span class="prior">prior week ${t.p}</span></div>
+    <div class="spark">${spark(t.s)}</div>
+    ${t.n ? `<div class="note">${t.n}</div>` : ""}
+  </div>`).join("");
+const fmtD = s => new Date(s + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
+document.getElementById("wkLabel").textContent =
+  `${fmtD(D.windows["1w"][0])} – ${fmtD(D.windows["1w"][1])} vs ${fmtD(D.windows["1wp"][0])} – ${fmtD(D.windows["1wp"][1])} · sparklines: last ${weeks.length} weeks`;
+const b = D.built || {};
+document.getElementById("freshness").textContent =
+  (live ? "Live data" : "Embedded snapshot") + " · warehouse through " + D.ga4_last_day
+  + (b["journey-cube"] ? " · site metrics built " + String(b["journey-cube"]).slice(0, 16).replace("T", " ") + " UTC" : "")
+  + (b["icp-journeys"] ? " · lead metrics built " + String(b["icp-journeys"]).slice(0, 16).replace("T", " ") + " UTC" : "");
+
+// presentation mode toggle (URL ?present also works, for a bookmarkable screenshare tab)
+const btn = document.getElementById("presentBtn");
+const setP = on => { document.body.classList.toggle("present", on); btn.textContent = on ? "Exit presentation" : "Presentation mode"; };
+btn.addEventListener("click", () => setP(!document.body.classList.contains("present")));
+if (new URLSearchParams(location.search).has("present")) setP(true);
+</script>
 </body>
 </html>
