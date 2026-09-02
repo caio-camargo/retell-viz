@@ -17,16 +17,28 @@ glance, cares most about week-over-week movement, and often sees it on a shared 
 - **Screenshare-safe.** Large type, no hover-only information for the headline layer, light
   theme for the top-level pages, presentation mode on the home page (`?present`).
 
-## Queued
+## Queued (triaged 2026-09-02)
 
-| # | Item | Notes |
-|---|---|---|
-| 1 | **Weekly AI commentary on the headline tiles** | Same pattern as the weekly usage-trends report: SQL computes every figure (including streaks and "N of the last M weeks" — never left to the model), the model writes a short narrative per tile plus a carryover note, and a human correction column feeds forward permanently. Output lands as a fourth section in the tile's expanded panel and as the Monday message. Needs: a `viz_commentary` table, one Edge Function on the Monday cron, the usage-trends context/carryover model reused. |
-| 2 | **Signups on the home page** — done 2026-09-02 | Weekly self-serve signups with a business vs free-mail split, from the same Stripe feed the usage report uses. Next: usage minutes per week alongside it (same source family), and the cohort view from the usage report. |
-| 3 | **Journey pages themed to match** | The Sankey/gravity pages are dark-only; the rest of the site is light. On a shared screen the switch is jarring and the dense dark ribbons read poorly. Either theme them to the site tokens or surface their tables (which carry the week-over-week content) above the chart. |
-| 4 | **Retire or refresh the dated cohorts** | ICP funnel (Jun–Jul), ICP gravity (53 leads), identified accounts (Aug 4–10) are one-off snapshots. Move them to the nightly refresh or into an archive section. |
-| 5 | **Unique tab titles on the journey pages** | Five pages share one title until their script overrides it. |
-| 6 | **Enterprise bookings with recordings** | A count on the ICP bookings tile of how many of last week's booked enterprise leads have a watchable session recording — count only; the recordings themselves stay private. |
+Two standing decisions: revenue figures are allowed on the site for now (the URL is
+unlisted; proper access controls are queued below), and aggregate objection / competitor
+trends from sales calls are in scope — never verbatims, never per-rep.
+
+| # | Item | Notes | Size |
+|---|---|---|---|
+| 1 | **Three more headline tiles**: new paid accounts (pairs with signups), ICP accounts seen on the site (count), visitors from AI assistants | Paid accounts need a billing fetch worker alongside the signups one; ICP accounts is a count over the identified-visitor feed; AI-assistant visitors come from the warehouse origin classification already used by the funnel. | S–M |
+| 2 | **Pipeline health section** on the home | All computed already: per-source freshness, metric anomaly verdicts, form-leak count, attribution capture rates (UTM %, client-id %), feed liveness, payload build stamps. One row per source, green/amber/red, last run. | S |
+| 3 | **Usage cohorts page + weekly AI commentary** — one build | Cohort counts and minute totals per week (no customer names), plus the commentary pattern from the weekly usage report: SQL computes every figure including streaks, the model writes prose and a carryover note, a human-correction column feeds forward. Commentary renders as a fourth section in each tile's panel and as the Monday message. | M |
+| 4 | **Ads full-funnel on nightly refresh** | Spend → session → form → routed → booked per campaign (ad clicks reconcile with sessions ~1:1). Replaces the dated paid-ads snapshot. LinkedIn ads data is stale upstream since June. | M |
+| 5 | **Organic ICP demand page** | Search-console pages and queries ranked by the ICP leads they produce — demand quality, not rankings (rankings stay with the SEO owner's weekly report). | M |
+| 6 | **Sales-call objection & competitor trends** | Aggregate per week and segment from the structured call analysis: top objections, competitors named, feature gaps, stage-vs-reality. Counts and shares only. | M |
+| 7 | **Access controls** | Move from an unlisted URL to real access control (sign-in in front of the static site or a gated host) before widening the audience. Until then no per-person data of any kind, and revenue stays coarse. | M |
+| 8 | **Enterprise bookings with recordings** | Count on the ICP bookings tile of last week's booked enterprise leads with a watchable recording. | S |
+| 9 | **Chili routed-but-not-booked + calendar abandonment** | Weekly count and rate on the enterprise-leads page. | S |
+| 10 | **Meeting → deal movement** | Weekly counts from the meeting↔deal link (deals exist from Feb 2026; amounts on ~2%, so counts only). | M |
+| 11 | **Community page** | Discourse themes and health week over week; the data currently lives in a spreadsheet base, so the cost is a payload path. | M |
+| 12 | **Journey pages themed to match; dated cohorts refreshed or archived; unique tab titles** | Screenshare consistency; see the review notes. | S |
+| 13 | **Visitor → signup / booking ratio, 12 months** | Monthly index (no shared key between the three sources — an index, not a funnel). | S |
+| — | Done 2026-09-02 | Signups tile; expandable tiles; presentation mode; this roadmap. | — |
 
 ## Caveats that travel with the numbers
 
